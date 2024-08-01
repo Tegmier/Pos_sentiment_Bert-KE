@@ -11,12 +11,12 @@ import numpy as np
 from transformers import DistilBertModel
 from transformers import BertModel, BertTokenizer, BitsAndBytesConfig
 
-bnb_config = BitsAndBytesConfig(
-    load_in_4bit=True,
-    bnb_4bit_quant_type='nf4',  # 使用 nf4 量化类型
-    bnb_4bit_use_double_quant=True,  # 启用双量化
-    bnb_4bit_compute_dtype=torch.bfloat16  # 使用 bfloat16 进行计算
-)
+# bnb_config = BitsAndBytesConfig(
+#     load_in_4bit=True,
+#     bnb_4bit_quant_type='nf4',  # 使用 nf4 量化类型
+#     bnb_4bit_use_double_quant=True,  # 启用双量化
+#     bnb_4bit_compute_dtype=torch.bfloat16  # 使用 bfloat16 进行计算
+# )
 
 # bert_model = DistilBertModel.from_pretrained('distilbert-base-uncased',
 #                                             # quantization_config=bnb_config,
