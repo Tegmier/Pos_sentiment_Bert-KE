@@ -18,13 +18,12 @@ bnb_config = BitsAndBytesConfig(
     bnb_4bit_compute_dtype=torch.bfloat16  # 使用 bfloat16 进行计算
 )
 
-bert_model = DistilBertModel.from_pretrained('distilbert-base-uncased',
-                                            quantization_config=bnb_config,
-                                            device_map='cuda:0')
-# bert_model = BertModel.from_pretrained('bert-base-uncased',
-#                                        quantization_config=bnb_config,
-#                                        device_map='cuda:0')
-# bert_model = BertModel.from_pretrained('google/bert_uncased_L-2_H-128_A-2')
+# bert_model = DistilBertModel.from_pretrained('distilbert-base-uncased',
+#                                             # quantization_config=bnb_config,
+#                                             device_map='cuda:0')
+bert_model = BertModel.from_pretrained('bert-base-uncased',
+                                    #    quantization_config=bnb_config,
+                                       device_map='cuda:0')
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 
 # Global Training Parameters
@@ -33,7 +32,7 @@ embedding_dim = bert_model.config.hidden_size
 # print(embedding_dim)
 y_dim = 2
 z_dim = 5
-batchsize = 1
+batchsize = 10
 nepochs = 20
 labels2idx = {'O': 0, 'B': 1, 'I': 2, 'E': 3, 'S': 4}
 lr = 0.1
@@ -53,6 +52,8 @@ data = []
 for i in range(len(qualified_tweet_list)):
     data.append([qualified_tweet_list[i], qualified_tag_list[i]])
 
+data = data[:3000]
+
 def iterData(data, batchsize):
     bucket = random.sample(data, len(data))
     bucket = [bucket[i:i+batchsize] for i in range(0, len(bucket), batchsize)]
@@ -61,8 +62,10 @@ def iterData(data, batchsize):
         yield data_tokenizing(batch)
 
 def data_tokenizing(data):
+    batch_size = 0
     tweet, tag = [], []
     for tweet_tag in data:
+        batch_size+=1
         tweet.append(tweet_tag[0])
         tag.append(tweet_tag[1])
     encoded_tweet = tokenizer.batch_encode_plus(
@@ -96,7 +99,7 @@ def data_tokenizing(data):
     inputs["attention_mask"] = encoded_tweet["attention_mask"]
     inputs["label_y"] = torch.tensor(y, dtype=torch.int64)
     inputs["label_z"] = torch.tensor(z, dtype=torch.int64)
-    return inputs
+    return inputs, batch_size
 
 def get_label(encoded_tweet, encoded_tag):
     y , z = [], []
@@ -154,15 +157,18 @@ class FinetuneBert(nn.Module):
     
 def train_model(model, criterion, optimizer, data):
     for epoch in range(nepochs):
+        print("Start epoch " + str(epoch) + ":")
         trainloader = iterData(data, batchsize)
         model.train()
         t_start = time.time()
         train_loss = []
-        for i, inputs in enumerate(trainloader):
+        for i, (inputs, batch_size) in enumerate(trainloader):
             y = inputs["label_y"].cuda()
             z = inputs["label_z"].cuda()
             y_pred, z_pred = model(inputs)
-            loss = (0.5 * criterion(y_pred, y) + 0.5 * criterion(z_pred, z)) / y.size(0)
+            y_pred = y_pred.reshape(batch_size, 2,-1)
+            z_pred = z_pred.reshape(batch_size, 5,-1)
+            loss = (0.5 * criterion(y_pred, y) + 0.5 * criterion(z_pred, z)) / y.size(-1)
             optimizer.zero_grad()
             loss.backward()
             train_loss.append([float(loss), y.size(0)])
