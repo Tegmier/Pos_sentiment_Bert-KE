@@ -7,11 +7,16 @@ from transformers import BertTokenizer, BertModel
 from typing import List, Tuple
 
 import logging
+import re
 
 # 设置transformers库的日志级别为ERROR，仅显示Error及以上级别的消息
 logging.getLogger("transformers").setLevel(logging.ERROR)
 
+# 定义BIOES字典
 labels2idx = {'O': 0, 'B': 1, 'I': 2, 'E': 3, 'S': 4}
+
+# 定义URLpattern正则表达式
+url_pattern = re.compile(r'https?://\S+')
 
 def get_data_list_from_path(data_path):
     with open(data_path, 'r', encoding='utf-8') as f:
@@ -71,11 +76,25 @@ def bert_tokenizing(tweet_list, tag_list):
         tokenized_tag_list.append(tokenizer.tokenize(tag))
     return tokenized_tweet_list, tokenized_tag_list
 
+def remove_url(qualified_tweet_list, qualified_tag_list):
+    url_removed_tweet, url_removed_tag = [], []
+    for tweet, tag in zip(qualified_tweet_list, qualified_tag_list):
+        # print(tweet)
+        # print(tag)
+        cleaned_sentence = re.sub(url_pattern, '', tweet)
+        if tag in cleaned_sentence:
+            url_removed_tweet.append(cleaned_sentence)
+            url_removed_tag.append(tag)
+        # print(cleaned_sentence)
+        # print(tag in cleaned_sentence)
+        # print("---------------------------------")
+    return url_removed_tweet, url_removed_tag
+
+
 def get_label(tokenized_tweet_list, tokenized_tag_list):
     y , z = [], []
     bad_cnt = 0
     begin = -1
-
     # 获取关键词的开始位置
     for tweet, tag in zip(tokenized_tweet_list, tokenized_tag_list):
         begin = -1
@@ -89,13 +108,11 @@ def get_label(tokenized_tweet_list, tokenized_tag_list):
             if the_begining_of_keyphrase_flag:
                 begin = i
                 break
-
         # 实装label_y
         labels_y = [0]*len(tweet)
         for i in range(len(tag)):
             labels_y[begin+i] = 1
         y.append(labels_y)
-
         # 实装label_z 
         # labels2idx = {'O': 0, 'B': 1, 'I': 2, 'E': 3, 'S': 4}
         labels_z = [0]*len(tweet)
@@ -121,6 +138,9 @@ if __name__ == '__main__':
 
         data_path = [train_tweet_data, test_tweet_data]
         qualified_tweet_list, qualified_tag_list = get_train_test_dicts(data_path)
+
+        # 去除网址
+        qualified_tweet_list, qualified_tag_list = remove_url(qualified_tweet_list, qualified_tag_list)
         tokenized_tweet_list, tokenized_tag_list = bert_tokenizing(qualified_tweet_list, qualified_tag_list)
         # print(len(tokenized_tweet_list))
         labels_y, labels_z = get_label(tokenized_tweet_list, tokenized_tag_list)
