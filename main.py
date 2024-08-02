@@ -1,6 +1,4 @@
 import torch
-from transformers import BertTokenizer
-from transformers import BertModel
 import torch.nn as nn
 import torch.nn.functional as F
 import random
@@ -36,6 +34,7 @@ batchsize = 10
 nepochs = 20
 labels2idx = {'O': 0, 'B': 1, 'I': 2, 'E': 3, 'S': 4}
 lr = 0.1
+max_grad_norm = 5
 
 with open('tokenized.pkl', 'rb') as file:
     tokenzied_data = pickle.load(file)
@@ -52,7 +51,7 @@ data = []
 for i in range(len(qualified_tweet_list)):
     data.append([qualified_tweet_list[i], qualified_tag_list[i]])
 
-data = data[:3000]
+data = data[:10000]
 
 def iterData(data, batchsize):
     bucket = random.sample(data, len(data))
@@ -162,19 +161,48 @@ def train_model(model, criterion, optimizer, data):
         model.train()
         t_start = time.time()
         train_loss = []
+
         for i, (inputs, batch_size) in enumerate(trainloader):
             y = inputs["label_y"].cuda()
             z = inputs["label_z"].cuda()
+
+            optimizer.zero_grad()
+
+            initial_params = {name: param.clone() for name, param in model.bert.named_parameters()}
             y_pred, z_pred = model(inputs)
             y_pred = y_pred.reshape(batch_size, 2,-1)
             z_pred = z_pred.reshape(batch_size, 5,-1)
             loss = (0.5 * criterion(y_pred, y) + 0.5 * criterion(z_pred, z)) / y.size(-1)
-            optimizer.zero_grad()
+            
             loss.backward()
-            train_loss.append([float(loss), y.size(0)])
+
+            # has_gradients = any(param.grad is not None for param in model.bert.parameters())
+            # if not has_gradients:
+            #     print(f"Warning: No gradients for BERT parameters at batch {i}.")
+
+
+            nn.utils.clip_grad_norm_(model.parameters(), max_norm=max_grad_norm, norm_type=2)
+            optimizer.step()
+
+
+            # 检查参数是否更新
+            parameters_updated = False
+            for name, param in model.bert.named_parameters():
+                print(name)
+                if not torch.equal(param.data, initial_params[name]):
+                    parameters_updated = True
+                    break
+
+            # if parameters_updated:
+            #     print(f"Batch {i}: BERT parameters updated.")
+            # else:
+            #     print(f"Batch {i}: BERT parameters not updated.")
+
+
+            train_loss.append([float(loss), y.size(-1)])
         train_loss = np.array(train_loss)
         train_loss = np.sum(train_loss[:, 0] * train_loss[:, 1]) / np.sum(train_loss[:, 1])
-        print('train loss: {:.8f} {}'.format(train_loss, time.time() - t_start))
+        print('train loss: {:.8f}, time consuming: {}'.format(train_loss, time.time() - t_start))
 
 model = FinetuneBert(bert_model = bert_model, y_dim = y_dim, z_dim = z_dim).cuda()
 criterion = F.cross_entropy
