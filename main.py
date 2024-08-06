@@ -217,7 +217,6 @@ def train_model(model, criterion, optimizer, data):
             #     print(f"Batch {i}: BERT parameters updated.")
             # else:
             #     print(f"Batch {i}: BERT parameters not updated.")
-
             train_loss.append([float(loss), y.size(-1)])
         train_loss = np.array(train_loss)
         train_loss = np.sum(train_loss[:, 0] * train_loss[:, 1]) / np.sum(train_loss[:, 1])
@@ -225,5 +224,6 @@ def train_model(model, criterion, optimizer, data):
 
 model = FinetuneBert(bert_model = bert_model, y_dim = y_dim, z_dim = z_dim).cuda()
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters(), lr=lr)
+# optimizer = optim.Adam(model.parameters(), lr=lr)
+optimizer = optim.SGD(model.parameters(), lr=lr)
 model = train_model(model, criterion, optimizer, data)
