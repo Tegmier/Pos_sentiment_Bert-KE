@@ -30,11 +30,12 @@ embedding_dim = bert_model.config.hidden_size
 # print(embedding_dim)
 y_dim = 2
 z_dim = 5
-batchsize = 10
+batchsize = 7
 nepochs = 20
 labels2idx = {'O': 0, 'B': 1, 'I': 2, 'E': 3, 'S': 4}
-lr = 0.1
+lr = 0.0001
 max_grad_norm = 5
+numberofdata = 1000
 
 with open('tokenized.pkl', 'rb') as file:
     tokenzied_data = pickle.load(file)
@@ -51,7 +52,7 @@ data = []
 for i in range(len(qualified_tweet_list)):
     data.append([qualified_tweet_list[i], qualified_tag_list[i]])
 
-data = data[:10000]
+data = data[:numberofdata]
 
 def iterData(data, batchsize):
     bucket = random.sample(data, len(data))
@@ -87,8 +88,6 @@ def data_tokenizing(data):
     )
         tag_tensor.append(encoded_tag["input_ids"][0])
     y, z = get_label(encoded_tweet, tag_tensor)
-    input_ids = encoded_tweet["input_ids"]
-    attention_mask = encoded_tweet["attention_mask"]
     # print(encoded_tweet["input_ids"])
     # print(tag_tensor)
     # print(y)
@@ -144,14 +143,23 @@ class FinetuneBert(nn.Module):
         self.classifier_z = nn.Linear(embedding_dim, z_dim)
     
     def forward(self, inputs):
+        # input_ids: batchsize * sentence_length
         input_ids = inputs['input_ids'].cuda()
         attention_mask = inputs['attention_mask'].cuda()
+        # print("input_shape", input_ids.shape)
         # label_y = inputs['label_y'].cuda()
         # label_z = inputs['label_z'].cuda()
         outputs = self.bert(input_ids = input_ids, attention_mask = attention_mask)
+        
+        # embeddings = (batchsize, sequence_len, 768)
         embeddings = outputs.last_hidden_state
-        out1 = F.softmax(self.classifier_y(embeddings), dim=-1)
-        out2 = F.softmax(self.classifier_z(embeddings), dim=-1)
+        # 旧损失函数
+        # out1 = F.softmax(self.classifier_y(embeddings), dim=-1)
+        # out2 = F.softmax(self.classifier_z(embeddings), dim=-1)
+
+        # 新损失函数
+        out1 = self.classifier_y(embeddings)
+        out2 = self.classifier_z(embeddings)
         return out1, out2
     
 def train_model(model, criterion, optimizer, data):
@@ -168,12 +176,25 @@ def train_model(model, criterion, optimizer, data):
 
             optimizer.zero_grad()
 
-            initial_params = {name: param.clone() for name, param in model.bert.named_parameters()}
+            # initial_params = {name: param.clone() for name, param in model.bert.named_parameters()}
             y_pred, z_pred = model(inputs)
-            y_pred = y_pred.reshape(batch_size, 2,-1)
-            z_pred = z_pred.reshape(batch_size, 5,-1)
-            loss = (0.5 * criterion(y_pred, y) + 0.5 * criterion(z_pred, z)) / y.size(-1)
+            y_pred = y_pred.reshape(batch_size, 2, -1)
+            z_pred = z_pred.reshape(batch_size, 5, -1)
+
+            # 初始的损失函数
+            # loss = (0.5 * criterion(y_pred, y) + 0.5 * criterion(z_pred, z)) / y.size(-1)
+
+
+            # 重写损失函数
+            loss = (0.5 * criterion(y_pred, y) + 0.5 * criterion(z_pred, z)) / y_pred.size(-1)
             
+            
+            # print("y:")
+            # print(y.shape)
+            # print("y_pred:")
+            # print(y_pred.shape)
+            # print("---------------")
+
             loss.backward()
 
             # has_gradients = any(param.grad is not None for param in model.bert.parameters())
@@ -185,19 +206,17 @@ def train_model(model, criterion, optimizer, data):
             optimizer.step()
 
 
-            # 检查参数是否更新
-            parameters_updated = False
-            for name, param in model.bert.named_parameters():
-                print(name)
-                if not torch.equal(param.data, initial_params[name]):
-                    parameters_updated = True
-                    break
+            # # 检查参数是否更新
+            # parameters_updated = False
+            # for name, param in model.bert.named_parameters():
+            #     if not torch.equal(param.data, initial_params[name]):
+            #         parameters_updated = True
+            #         break
 
             # if parameters_updated:
             #     print(f"Batch {i}: BERT parameters updated.")
             # else:
             #     print(f"Batch {i}: BERT parameters not updated.")
-
 
             train_loss.append([float(loss), y.size(-1)])
         train_loss = np.array(train_loss)
@@ -205,6 +224,6 @@ def train_model(model, criterion, optimizer, data):
         print('train loss: {:.8f}, time consuming: {}'.format(train_loss, time.time() - t_start))
 
 model = FinetuneBert(bert_model = bert_model, y_dim = y_dim, z_dim = z_dim).cuda()
-criterion = F.cross_entropy
-optimizer = optim.SGD(model.parameters(), lr=lr)
+criterion = nn.CrossEntropyLoss()
+optimizer = optim.Adam(model.parameters(), lr=lr)
 model = train_model(model, criterion, optimizer, data)
