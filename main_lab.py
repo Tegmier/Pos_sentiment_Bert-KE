@@ -9,6 +9,7 @@ import numpy as np
 from transformers import DistilBertModel
 from transformers import BertModel, BertTokenizer, BitsAndBytesConfig
 
+
 import warnings
 
 # 禁用特定类型的警告，例如 FutureWarning
@@ -35,12 +36,14 @@ embedding_dim = bert_model.config.hidden_size
 # print(embedding_dim)
 y_dim = 2
 z_dim = 5
-batchsize = 10
-nepochs = 20
+batchsize = 20
+nepochs = 50
 labels2idx = {'O': 0, 'B': 1, 'I': 2, 'E': 3, 'S': 4}
-lr = 0.0001
+lr = 0.00001
 max_grad_norm = 5
-numberofdata = 10000
+numberofdata = 20000
+world_size = 4  # 使用的 GPU 数量
+
 
 with open('tokenized.pkl', 'rb') as file:
     tokenzied_data = pickle.load(file)
@@ -57,8 +60,51 @@ data = []
 for i in range(len(qualified_tweet_list)):
     data.append([qualified_tweet_list[i], qualified_tag_list[i]])
 
-data = data[:numberofdata]
+# 实现通过Dataloader读取数据的方法
+from torch.utils.data import Dataset
+class KE_Dataloader(Dataset):
+    def __init__(self, data) -> None:
+        self.tweets = [data[i][0] for i in range(len(data))]
+        self.tags = [data[i][1] for i in range(len(data))]
 
+    def __len__(self):
+        return len(self.tweets)
+    
+    def __getitem__(self, index):
+        return self.tweets[index], self.tags[index]
+        
+def batch_padding_tokenizing_collate_function(batch):
+    tweets, tags = zip(*batch)
+    tweets = list(tweets)
+    tags = list(tags)
+    encoded_tweet = tokenizer.batch_encode_plus(
+            tweets,
+            is_split_into_words=False,  # 指示输入已经是分好词的
+            add_special_tokens=True,  # 添加特殊token，如[CLS]和[SEP]
+            padding=True,  # 填充到最大长度
+            truncation=True,  # 截断超过最大长度的句子
+            return_tensors='pt'  # 返回PyTorch张量
+        )
+    tag_tensor = []
+    for t in tags:
+        encoded_tag = tokenizer.encode_plus(
+            t,
+            is_split_into_words=False,
+            add_special_tokens=False,
+            padding=False,
+            truncation=False,
+            return_tensors='pt'
+            )
+        tag_tensor.append(encoded_tag["input_ids"][0])
+    
+    y, z = get_label(encoded_tweet, tag_tensor)
+    inputs = {}
+    inputs["input_ids"] = encoded_tweet["input_ids"]
+    inputs["attention_mask"] = encoded_tweet["attention_mask"]
+    inputs["label_y"] = torch.tensor(y, dtype=torch.int64)
+    inputs["label_z"] = torch.tensor(z, dtype=torch.int64)
+    return inputs
+    
 def iterData(data, batchsize):
     bucket = random.sample(data, len(data))
     bucket = [bucket[i:i+batchsize] for i in range(0, len(bucket), batchsize)]
@@ -93,10 +139,6 @@ def data_tokenizing(data):
     )
         tag_tensor.append(encoded_tag["input_ids"][0])
     y, z = get_label(encoded_tweet, tag_tensor)
-    # print(encoded_tweet["input_ids"])
-    # print(tag_tensor)
-    # print(y)
-    # print(z)
     inputs = {}
     inputs["input_ids"] = encoded_tweet["input_ids"]
     inputs["attention_mask"] = encoded_tweet["attention_mask"]
@@ -151,85 +193,69 @@ class FinetuneBert(nn.Module):
         # input_ids: batchsize * sentence_length
         input_ids = inputs['input_ids'].cuda()
         attention_mask = inputs['attention_mask'].cuda()
-        # print("input_shape", input_ids.shape)
-        # label_y = inputs['label_y'].cuda()
-        # label_z = inputs['label_z'].cuda()
         outputs = self.bert(input_ids = input_ids, attention_mask = attention_mask)
         
         # embeddings = (batchsize, sequence_len, 768)
         embeddings = outputs.last_hidden_state
-        # 旧损失函数
-        # out1 = F.softmax(self.classifier_y(embeddings), dim=-1)
-        # out2 = F.softmax(self.classifier_z(embeddings), dim=-1)
 
         # 新损失函数
         out1 = self.classifier_y(embeddings)
         out2 = self.classifier_z(embeddings)
         return out1, out2
     
-def train_model(model, criterion, optimizer, data):
+def train_model(model, criterion, optimizer, data_loader, batch_size):
     for epoch in range(nepochs):
         print("Start epoch " + str(epoch) + ":")
-        trainloader = iterData(data, batchsize)
         model.train()
         t_start = time.time()
         train_loss = []
-
-        for i, (inputs, batch_size) in enumerate(trainloader):
+        for inputs in data_loader:
             y = inputs["label_y"].cuda()
             z = inputs["label_z"].cuda()
-
             optimizer.zero_grad()
-
-            # initial_params = {name: param.clone() for name, param in model.bert.named_parameters()}
             y_pred, z_pred = model(inputs)
             y_pred = y_pred.reshape(batch_size, 2, -1)
             z_pred = z_pred.reshape(batch_size, 5, -1)
-
-            # 初始的损失函数
-            # loss = (0.5 * criterion(y_pred, y) + 0.5 * criterion(z_pred, z)) / y.size(-1)
-
-
-            # 重写损失函数
             loss = (0.5 * criterion(y_pred, y) + 0.5 * criterion(z_pred, z)) / y_pred.size(-1)
-            
-            
-            # print("y:")
-            # print(y.shape)
-            # print("y_pred:")
-            # print(y_pred.shape)
-            # print("---------------")
-
             loss.backward()
-
-            # has_gradients = any(param.grad is not None for param in model.bert.parameters())
-            # if not has_gradients:
-            #     print(f"Warning: No gradients for BERT parameters at batch {i}.")
-
-
             nn.utils.clip_grad_norm_(model.parameters(), max_norm=max_grad_norm, norm_type=2)
             optimizer.step()
-
-
-            # # 检查参数是否更新
-            # parameters_updated = False
-            # for name, param in model.bert.named_parameters():
-            #     if not torch.equal(param.data, initial_params[name]):
-            #         parameters_updated = True
-            #         break
-
-            # if parameters_updated:
-            #     print(f"Batch {i}: BERT parameters updated.")
-            # else:
-            #     print(f"Batch {i}: BERT parameters not updated.")
             train_loss.append([float(loss), y.size(-1)])
         train_loss = np.array(train_loss)
         train_loss = np.sum(train_loss[:, 0] * train_loss[:, 1]) / np.sum(train_loss[:, 1])
         print('train loss: {:.8f}, time consuming: {}'.format(train_loss, time.time() - t_start))
+
+# import torch.distributed as dist
+# from torch.nn.parallel import DistributedDataParallel as DDP
+# from torch.utils.data import Dataset, DataLoader, DistributedSampler
+# # cuda分布式计算
+# # 初始化分布式环境
+# def setup(rank, world_size):
+#     dist.init_process_group(backend='nccl', init_method='env://', rank=rank, world_size=world_size)
+#     torch.cuda.set_device(rank)
+
+# def cleanup():
+#     dist.destroy_process_group()
+
+# # 使用DistributedSampler
+# def get_data_loader(data, batch_size, rank, world_size):
+#     sampler = DistributedSampler(data, num_replicas=world_size, rank=rank)
+#     data_loader = DataLoader(data, batch_size=batch_size, sampler=sampler, num_workers=4, pin_memory=True)
+#     return data_loader
+
+# 实例化dataloader
+from torch.utils.data import DataLoader
+dataset = KE_Dataloader(data[:numberofdata])
+data_loader = DataLoader(
+    dataset,
+    batch_size=batchsize,
+    shuffle=True,
+    collate_fn=batch_padding_tokenizing_collate_function
+)
 
 model = FinetuneBert(bert_model = bert_model, y_dim = y_dim, z_dim = z_dim).cuda()
 criterion = nn.CrossEntropyLoss()
 # optimizer = optim.Adam(model.parameters(), lr=lr)
 optimizer = optim.AdamW(model.parameters(), lr=lr)
 # optimizer = optim.SGD(model.parameters(), lr=lr)
-model = train_model(model, criterion, optimizer, data)
+model = train_model(model=model, criterion=criterion, optimizer=optimizer, data_loader=data_loader, batch_size=batchsize)
