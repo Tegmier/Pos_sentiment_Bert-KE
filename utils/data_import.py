@@ -1,11 +1,11 @@
 import pickle
 
 def data_import(numberofdata, train_test_rate):
-    with open('tokenized.pkl', 'rb') as file:
+    with open('data/tokenized.pkl', 'rb') as file:
         tokenzied_data = pickle.load(file)
         tokenized_tweet_list, tokenized_tag_list = tokenzied_data
 
-    with open('qualified_data.pkl', 'rb') as file:
+    with open('data/qualified_data.pkl', 'rb') as file:
         qualified_data = pickle.load(file)
 
     qualified_tweet_list, qualified_tag_list = qualified_data

@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from transformers import BertModel, BertTokenizer, BitsAndBytesConfig
 
 class FinetuneBert(nn.Module):
     def __init__(self, bert_model, y_dim, z_dim, embedding_dim):
@@ -21,3 +22,8 @@ class FinetuneBert(nn.Module):
         out1 = self.classifier_y(embeddings)
         out2 = self.classifier_z(embeddings)
         return out1, out2
+
+bert_model = BertModel.from_pretrained('bert-base-uncased',
+                                    #    quantization_config=bnb_config,
+                                       device_map='cuda:0')
+tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')

@@ -10,10 +10,10 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import Dataset, DataLoader, DistributedSampler
 from torch.utils.data import DataLoader
 import warnings
-from dataloader import KE_Dataloader, batch_padding_tokenizing_collate_function
-from model import FinetuneBert
-from data_import import data_import
-import evaluation_tools
+from utils.dataloader import KE_Dataloader, batch_padding_tokenizing_collate_function
+from utils.model import FinetuneBert
+from utils.data_import import data_import
+import utils.evaluation_tools as evaluation_tools
 
 
 # 禁用特定类型的警告，例如 FutureWarning
@@ -27,14 +27,14 @@ tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 embedding_dim = bert_model.config.hidden_size
 y_dim = 2
 z_dim = 5
-batchsize = 10
-nepochs = 10
+batchsize = 20
+nepochs = 60
 labels2idx = {'O': 0, 'B': 1, 'I': 2, 'E': 3, 'S': 4}
 lr = 0.00001
 lr_after = 0.00000001
 step_epoch = 30
 max_grad_norm = 5
-numberofdata =20000
+numberofdata =30000
 world_size = 4  # 使用的 GPU 数量
 train_test_rate = 0.7
 
