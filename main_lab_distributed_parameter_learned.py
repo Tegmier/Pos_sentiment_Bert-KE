@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader, DistributedSampler
 from torch.utils.data import DataLoader
 from utils.model import FinetuneBert, bert_model
 from utils.data_import import data_import
-from utils.learning_rate import create_lr_lambda
+from utils.learning_rate import create_lr_lambda, softmax_weight
 from utils.evaluation_tools import metrics_cal
 from utils.dictributed_env_setup import setup, cleanup
 from utils.dataloader import KE_Dataloader, batch_padding_tokenizing_collate_function
@@ -26,15 +26,18 @@ embedding_dim = bert_model.config.hidden_size
 y_dim = 2
 z_dim = 5
 batchsize = 10
-nepochs = 20
+nepochs = 10
 labels2idx = {'O': 0, 'B': 1, 'I': 2, 'E': 3, 'S': 4}
 lr = 0.00001
 lr_after = 0.00000001
+lr_weight_param = 0.01
 step_epoch = 35
 max_grad_norm = 5
-numberofdata = 30000
+numberofdata = 10000
 world_size = 4  # 使用的 GPU 数量
 train_test_rate = 0.7
+multi_task_learning_weight = 0.5
+multi_task_learning_rate = 0.01
 #############################################################################
 
 # 训练函数
@@ -58,6 +61,8 @@ def train(rank, world_size, data):
     # 初始化损失函数和优化器
     criterion = nn.CrossEntropyLoss().cuda(rank)
     optimizer = optim.AdamW(model.parameters(), lr=lr)
+    w1 = torch.tensor(multi_task_learning_weight, requires_grad=True, device=f'cuda:{rank}')  # 任务1的初始权重
+    weight_optimizer = optim.AdamW([w1], lr = multi_task_learning_rate)
     #自适应学习率
     scheduler = optim.lr_scheduler.LambdaLR(optimizer=optimizer, lr_lambda=create_lr_lambda(step_epoch=step_epoch, lr_before_change=lr, lr_after_change=lr_after))
     for epoch in range(nepochs):
@@ -69,6 +74,7 @@ def train(rank, world_size, data):
             y = inputs["label_y"].cuda(rank)
             z = inputs["label_z"].cuda(rank)
             optimizer.zero_grad()
+            weight_optimizer.zero_grad()
             y_pred, z_pred = model(inputs)
             y_pred = y_pred.reshape(-1, y_dim)
             z_pred = z_pred.reshape(-1, z_dim)
@@ -76,14 +82,18 @@ def train(rank, world_size, data):
             z = z.reshape(-1)
             loss_y = criterion(y_pred, y)
             loss_z = criterion(z_pred, z)
-            loss = (loss_y + loss_z) / 2
+            multi_weight = softmax_weight(w1)
+            loss = multi_weight[0] * loss_y + multi_weight[1] * loss_z
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), max_norm=max_grad_norm, norm_type=2)
             optimizer.step()
+            weight_optimizer.step()
             train_loss.append(loss.item())
+            print(f"Rank {rank}, w1 {multi_weight[0].item()}, w1.grad {w1.grad}")
         avg_loss = sum(train_loss) / len(train_loss)
         print(f"Rank {rank}, Epoch [{epoch + 1}/{nepochs}], Loss: {avg_loss:.8f}, Time: {time.time() - t_start:.2f}s")
         scheduler.step()
+    print(f"Rank {rank}, w1 {w1.item()}, w2 {1 - w1.item()}")
     if rank ==0:
         model_to_save = model.module
         torch.save(model_to_save.state_dict(), f'checkpoint/model_checkpoint_{batchsize}_{step_epoch}_{nepochs}_{numberofdata}.pth')

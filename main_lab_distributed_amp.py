@@ -7,6 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import torch.multiprocessing as mp
+from torch.amp import GradScaler, autocast
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler
 from torch.utils.data import DataLoader
@@ -60,27 +61,32 @@ def train(rank, world_size, data):
     optimizer = optim.AdamW(model.parameters(), lr=lr)
     #自适应学习率
     scheduler = optim.lr_scheduler.LambdaLR(optimizer=optimizer, lr_lambda=create_lr_lambda(step_epoch=step_epoch, lr_before_change=lr, lr_after_change=lr_after))
+
+    # 初始化 GradScaler
+    scaler = GradScaler()
     for epoch in range(nepochs):
         print(f"Rank {rank}, Start epoch {epoch + 1}/{nepochs}")
         model.train()
         t_start = time.time()
         train_loss = []
         for inputs in data_loader:
-            y = inputs["label_y"].cuda(rank)
-            z = inputs["label_z"].cuda(rank)
-            optimizer.zero_grad()
-            y_pred, z_pred = model(inputs)
-            y_pred = y_pred.reshape(-1, y_dim)
-            z_pred = z_pred.reshape(-1, z_dim)
-            y = y.reshape(-1)
-            z = z.reshape(-1)
-            loss_y = criterion(y_pred, y)
-            loss_z = criterion(z_pred, z)
-            loss = (loss_y + loss_z) / 2
-            loss.backward()
+            with autocast(device_type='cuda'):
+                y = inputs["label_y"].cuda(rank)
+                z = inputs["label_z"].cuda(rank)
+                optimizer.zero_grad()
+                y_pred, z_pred = model(inputs)
+                y_pred = y_pred.reshape(-1, y_dim)
+                z_pred = z_pred.reshape(-1, z_dim)
+                y = y.reshape(-1)
+                z = z.reshape(-1)
+                loss_y = criterion(y_pred, y)
+                loss_z = criterion(z_pred, z)
+                loss = (loss_y + loss_z) / 2
+            scaler.scale(loss).backward()
             nn.utils.clip_grad_norm_(model.parameters(), max_norm=max_grad_norm, norm_type=2)
-            optimizer.step()
+            scaler.step(optimizer=optimizer)
             train_loss.append(loss.item())
+            scaler.update()
         avg_loss = sum(train_loss) / len(train_loss)
         print(f"Rank {rank}, Epoch [{epoch + 1}/{nepochs}], Loss: {avg_loss:.8f}, Time: {time.time() - t_start:.2f}s")
         scheduler.step()

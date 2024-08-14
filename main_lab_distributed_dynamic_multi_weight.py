@@ -32,7 +32,7 @@ lr = 0.00001
 lr_after = 0.00000001
 step_epoch = 35
 max_grad_norm = 5
-numberofdata = 30000
+numberofdata = 10000
 world_size = 4  # 使用的 GPU 数量
 train_test_rate = 0.7
 #############################################################################
@@ -76,7 +76,12 @@ def train(rank, world_size, data):
             z = z.reshape(-1)
             loss_y = criterion(y_pred, y)
             loss_z = criterion(z_pred, z)
-            loss = (loss_y + loss_z) / 2
+            total_loss = loss_y + loss_z
+            weight_task1 = loss_y/total_loss
+            weight_task2 = loss_z/total_loss
+            # print(f"Rank {rank}, loss_y {loss_y}, loss_z {loss_z}")
+            loss = weight_task1*loss_y + weight_task2*loss_z
+            # print(f"Rank {rank} weight_task1 {weight_task1} weight_task2 {weight_task2}")
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), max_norm=max_grad_norm, norm_type=2)
             optimizer.step()

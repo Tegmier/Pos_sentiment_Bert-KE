@@ -8,6 +8,7 @@ class FinetuneBert(nn.Module):
         self.bert = bert_model
         self.classifier_y = nn.Linear(embedding_dim, y_dim)
         self.classifier_z = nn.Linear(embedding_dim, z_dim)
+        # self.w1 = nn.Parameter(torch.tensor(0.5))
     
     def forward(self, inputs):
         # input_ids: batchsize * sentence_length
