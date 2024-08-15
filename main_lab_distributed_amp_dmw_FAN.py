@@ -29,13 +29,13 @@ embedding_dim = bert_model.config.hidden_size
 y_dim = 2
 z_dim = 5
 batchsize = 10
-nepochs = 10
+nepochs = 5
 labels2idx = {'O': 0, 'B': 1, 'I': 2, 'E': 3, 'S': 4}
 lr = 0.00001
 lr_after = 0.00000001
 step_epoch = 35
 max_grad_norm = 5
-numberofdata = 1000
+numberofdata = 30000
 world_size = 4  # 使用的 GPU 数量
 train_test_rate = 0.7
 #############################################################################
@@ -94,7 +94,6 @@ def train(rank, world_size, data):
         print(f"Rank {rank}, Epoch [{epoch + 1}/{nepochs}], Loss: {avg_loss:.8f}, Time: {time.time() - t_start:.2f}s")
         scheduler.step()
         loss_for_visualization.append(avg_loss)
-    print(loss_for_visualization)
     pickle_write(loss_for_visualization, f"intermediate_data/rank{rank}_loss.pickle")
     if rank ==0:
         model_to_save = model.module

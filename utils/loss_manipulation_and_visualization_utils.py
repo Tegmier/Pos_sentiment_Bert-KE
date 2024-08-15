@@ -6,20 +6,19 @@ def loss_manipulation(world_size):
     for i in range(world_size):
         all_loss.append(pickle_read(f"intermediate_data/rank{i}_loss.pickle"))
     all_loss = np.mean(np.array(all_loss), axis = 0)
-    print(all_loss)
     return all_loss
 
 
 
 def plot_loss_in_training_process(all_loss):
-    plt.figure()
+    plt.figure(figsize=(8, 6))
     plt.plot(all_loss, color='blue')
     plt.title("Training loss")
     plt.xlabel("Epochs")
     plt.ylabel("loss")
     plt.grid(True)
     plt.show()
-    plt.savefig('training_loss.png')
+    plt.savefig('plot/training_loss.png')
 
 def main_visualization(world_size):
     plot_loss_in_training_process(loss_manipulation(world_size))
