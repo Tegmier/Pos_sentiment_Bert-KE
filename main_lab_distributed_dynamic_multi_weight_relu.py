@@ -10,7 +10,7 @@ import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler
 from torch.utils.data import DataLoader
-from utils.model import FinetuneBert, bert_model
+from utils.model_relu import FinetuneBertRelu, bert_model
 from utils.data_import import data_import
 from utils.learning_rate import create_lr_lambda
 from utils.evaluation_tools import metrics_cal
@@ -35,6 +35,7 @@ max_grad_norm = 5
 numberofdata = 10000
 world_size = 4  # 使用的 GPU 数量
 train_test_rate = 0.7
+hidden_dim = 512
 #############################################################################
 
 # 训练函数
@@ -52,7 +53,7 @@ def train(rank, world_size, data):
     )
 
     # 初始化模型
-    model = FinetuneBert(bert_model=bert_model, y_dim=y_dim, z_dim=z_dim, embedding_dim=embedding_dim).cuda(rank)
+    model = FinetuneBertRelu(bert_model=bert_model, y_dim=y_dim, z_dim=z_dim, embedding_dim=embedding_dim, hidden_dim=hidden_dim).cuda(rank)
     model = DDP(model, device_ids=[rank], find_unused_parameters=True)  # 包装模型
 
     # 初始化损失函数和优化器
@@ -95,7 +96,7 @@ def train(rank, world_size, data):
     cleanup()
 
 def eval(data):
-    model = FinetuneBert(bert_model=bert_model, y_dim=y_dim, z_dim=z_dim, embedding_dim=embedding_dim).cuda()
+    model = FinetuneBertRelu(bert_model=bert_model, y_dim=y_dim, z_dim=z_dim, embedding_dim=embedding_dim, hidden_dim=hidden_dim).cuda()
     model.load_state_dict(torch.load(f'checkpoint/model_checkpoint_{batchsize}_{step_epoch}_{nepochs}_{numberofdata}.pth'))
     test_loss = []
     acc = []
