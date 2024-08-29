@@ -11,10 +11,10 @@ from torch.amp import GradScaler, autocast
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler
 from torch.utils.data import DataLoader
-from utils.model_FAN import FinetuneBertFAN, bert_model
+from model.model_FAN import FinetuneBertFAN, bert_model
 from utils.data_import import data_import
 from utils.learning_rate import create_lr_lambda
-from utils.evaluation_tools import metrics_cal
+from utils.evaluation_tools import metrics_cal, keyphrase_acc_cal
 from utils.dictributed_env_setup import setup, cleanup
 from utils.dataloader import KE_Dataloader, batch_padding_tokenizing_collate_function
 from utils.loss_manipulation_and_visualization_utils import main_visualization
@@ -29,13 +29,13 @@ embedding_dim = bert_model.config.hidden_size
 y_dim = 2
 z_dim = 5
 batchsize = 10
-nepochs = 5
+nepochs = 1
 labels2idx = {'O': 0, 'B': 1, 'I': 2, 'E': 3, 'S': 4}
 lr = 0.00001
-lr_after = 0.00000001
-step_epoch = 35
+lr_after = 0.000001
+step_epoch = 30
 max_grad_norm = 5
-numberofdata = 30000
+numberofdata = 15000
 world_size = 4  # 使用的 GPU 数量
 train_test_rate = 0.7
 #############################################################################
@@ -95,7 +95,7 @@ def train(rank, world_size, data):
         scheduler.step()
         loss_for_visualization.append(avg_loss)
     pickle_write(loss_for_visualization, f"intermediate_data/rank{rank}_loss.pickle")
-    if rank ==0:
+    if rank==0:
         model_to_save = model.module
         torch.save(model_to_save.state_dict(), f'checkpoint/model_checkpoint_{batchsize}_{step_epoch}_{nepochs}_{numberofdata}.pth')
     cleanup()
@@ -104,7 +104,12 @@ def eval(data):
     model = FinetuneBertFAN(bert_model=bert_model, y_dim=y_dim, z_dim=z_dim, embedding_dim=embedding_dim).cuda()
     model.load_state_dict(torch.load(f'checkpoint/model_checkpoint_{batchsize}_{step_epoch}_{nepochs}_{numberofdata}.pth'))
     test_loss = []
-    acc = []
+    acc_y, acc_z = [], []
+    total_z, total_z_pred = [], []
+    total_y, total_y_pred = [], []
+    sentence_based_acc_y, sentence_based_acc_z = [], []
+    keyphrase_acc_y, keyphrase_acc_z = [], []
+    keyphrase_acc_y_pred, keyphrase_acc_z_pred = [], []
     # 创建数据集和采样器
     testdata = KE_Dataloader(data)
     test_loader = DataLoader(
@@ -113,10 +118,8 @@ def eval(data):
         collate_fn=batch_padding_tokenizing_collate_function
     )
     # 指标计算准备
-    total_z, total_z_pred = [], []
     model.eval()
     criterion = nn.CrossEntropyLoss().cuda()
-    sentence_based_acc = []
     with torch.no_grad():
         for inputs in test_loader:
             # y/z:(batch_size, seq)
@@ -128,23 +131,47 @@ def eval(data):
             z_pred = z_pred.reshape(-1, z_dim) # z_pred -> (batch*seq, z_dim)
             y = y.reshape(-1)
             z = z.reshape(-1)
+            # prepare for keyphrase_acc_cal
+            keyphrase_acc_y.append(np.array(y.reshape(batch_size, -1).cpu()))
+            keyphrase_acc_z.append(np.array(z.reshape(batch_size, -1).cpu()))
+            # loss calculation
             loss_y = criterion(y_pred, y)
             loss_z = criterion(z_pred, z)
             loss = (loss_y + loss_z) / 2
             test_loss.append(loss.item())
-            z_pred = z_pred.argmax(dim=1)           
+            # use argmax to format the pred result
+            y_pred = y_pred.argmax(dim=1)
+            z_pred = z_pred.argmax(dim=1)
+            # prepare for keyphrase_acc_cal
+            keyphrase_acc_y_pred.append(np.array(y_pred.reshape(batch_size, -1).cpu()))
+            keyphrase_acc_z_pred.append(np.array(z_pred.reshape(batch_size, -1).cpu()))
+            # save labels and predicts
             total_z.append(np.array(z.cpu()))
             total_z_pred.append(np.array(z_pred.cpu()))
-            acc.append((z_pred == z).sum().item()/(z_pred.numel()))
-            rows_equal = torch.all(z_pred.reshape(batch_size, -1) == z.reshape(batch_size, -1), dim =1)
-            sentence_based_acc.append([rows_equal.sum().item(), batch_size])
+            total_y.append(np.array(y.cpu()))
+            total_y_pred.append(np.array(y_pred.cpu()))
+            # cal acc_y & acc_z
+            acc_y.append((y_pred == y).sum().item()/(y_pred.numel()))
+            acc_z.append((z_pred == z).sum().item()/(z_pred.numel()))
+            # cal rows_equal_y & rows_equal_z
+            rows_equal_y = torch.all(y_pred.reshape(batch_size, -1) == y.reshape(batch_size, -1), dim = 1)
+            rows_equal_z = torch.all(z_pred.reshape(batch_size, -1) == z.reshape(batch_size, -1), dim = 1)
+            sentence_based_acc_y.append([rows_equal_y.sum().item(), batch_size])
+            sentence_based_acc_z.append([rows_equal_z.sum().item(), batch_size])
     test_loss = np.array(test_loss).mean()
-    accuracy = np.array(acc).mean()
-    print(f'Test Loss: {test_loss:.4f}, Accuracy: {accuracy:.4f}')
-    metrics_cal(total_z, total_z_pred)
-    sentence_based_acc = np.array(sentence_based_acc)
-    sentence_acc = np.sum(sentence_based_acc[:,0])/np.sum(sentence_based_acc[:,1])
-    print('Sentence based acc:{:.8f}'.format(sentence_acc))
+    accuracy_y = np.array(acc_y).mean()
+    accuracy_z = np.array(acc_z).mean()
+    print(f'Test Loss: {test_loss:.4f}, Accuracy Y: {accuracy_y:.8f}, Accuracy Z: {accuracy_z:.8f}')
+    metrics_cal(total_y, total_y_pred, type = "y task")
+    metrics_cal(total_z, total_z_pred, type = "z task")
+    keyphrase_acc_cal(keyphrase_acc_y, keyphrase_acc_y_pred, type = "y task")
+    keyphrase_acc_cal(keyphrase_acc_z, keyphrase_acc_z_pred, type = "z task")
+    sentence_based_acc_y = np.array(sentence_based_acc_y)
+    sentence_acc_y = np.sum(sentence_based_acc_y[:,0])/np.sum(sentence_based_acc_y[:,1])
+    print('Sentence based acc for y task:{:.8f}'.format(sentence_acc_y))
+    sentence_based_acc_z = np.array(sentence_based_acc_z)
+    sentence_acc_z = np.sum(sentence_based_acc_z[:,0])/np.sum(sentence_based_acc_z[:,1])
+    print('Sentence based acc for z task:{:.8f}'.format(sentence_acc_z))
 
 # 主函数
 if __name__ == "__main__":

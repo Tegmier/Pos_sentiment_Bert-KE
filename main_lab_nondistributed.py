@@ -11,7 +11,7 @@ from torch.utils.data import Dataset, DataLoader, DistributedSampler
 from torch.utils.data import DataLoader
 import warnings
 from utils.dataloader import KE_Dataloader, batch_padding_tokenizing_collate_function
-from utils.model import FinetuneBert
+from model.model_FAN_attention import FinetuneBertFANAttention
 from utils.data_import import data_import
 import utils.evaluation_tools as evaluation_tools
 
@@ -48,7 +48,7 @@ def train(data):
         collate_fn=batch_padding_tokenizing_collate_function
     )
     # 初始化模型
-    model = FinetuneBert(bert_model=bert_model, y_dim=y_dim, z_dim=z_dim, embedding_dim=embedding_dim).double().cuda()
+    model = FinetuneBertFANAttention(bert_model=bert_model, y_dim=y_dim, z_dim=z_dim, embedding_dim=embedding_dim).cuda()
 
     # 初始化损失函数和优化器
     criterion = nn.CrossEntropyLoss()
@@ -64,7 +64,7 @@ def train(data):
             y = inputs["label_y"].cuda()
             z = inputs["label_z"].cuda()
             optimizer.zero_grad()
-            y_pred, z_pred = model(inputs)
+            y_pred, z_pred, attention = model(inputs)
             y_pred = y_pred.reshape(-1, y_dim)
             z_pred = z_pred.reshape(-1, z_dim)
             y = y.reshape(-1)

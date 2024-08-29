@@ -19,6 +19,7 @@ def plot_loss_in_training_process(all_loss):
     plt.grid(True)
     plt.show()
     plt.savefig('plot/training_loss.png')
+    print('Plotting training loss graph finished!')
 
 def main_visualization(world_size):
     plot_loss_in_training_process(loss_manipulation(world_size))

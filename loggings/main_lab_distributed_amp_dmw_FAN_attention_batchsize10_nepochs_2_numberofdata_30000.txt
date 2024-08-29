@@ -1,0 +1,12 @@
+2024-08-28 17:24:58,429 - INFO - Experiment Config:
+2024-08-28 17:24:58,429 - INFO - embedding_dim: 768
+2024-08-28 17:24:58,429 - INFO - batchsize: 10
+2024-08-28 17:24:58,429 - INFO - nepochs: 2
+2024-08-28 17:24:58,429 - INFO - lr: 1e-05
+2024-08-28 17:24:58,429 - INFO - lr_after: 1e-06
+2024-08-28 17:24:58,429 - INFO - step_epoch: 30
+2024-08-28 17:24:58,429 - INFO - max_grad_norm: 5
+2024-08-28 17:24:58,429 - INFO - numberofdata: 30000
+2024-08-28 17:24:58,429 - INFO - world_size: 4
+2024-08-28 17:24:58,429 - INFO - train_test_rate: 0.7
+2024-08-28 17:25:00,653 - INFO - Rank 2, Start epoch 1/2
