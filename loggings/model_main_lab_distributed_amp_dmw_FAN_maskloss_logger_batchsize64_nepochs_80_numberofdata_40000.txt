@@ -1,0 +1,11 @@
+2024-08-31 20:44:16,717 - INFO - Experiment Config:
+2024-08-31 20:44:16,717 - INFO - embedding_dim: 768
+2024-08-31 20:44:16,717 - INFO - batchsize: 64
+2024-08-31 20:44:16,717 - INFO - nepochs: 80
+2024-08-31 20:44:16,717 - INFO - lr: 0.0001
+2024-08-31 20:44:16,718 - INFO - lr_after: 1e-06
+2024-08-31 20:44:16,718 - INFO - step_epoch: 20
+2024-08-31 20:44:16,718 - INFO - max_grad_norm: 5
+2024-08-31 20:44:16,718 - INFO - numberofdata: 40000
+2024-08-31 20:44:16,718 - INFO - world_size: 4
+2024-08-31 20:44:16,718 - INFO - train_test_rate: 0.7

@@ -10,5 +10,14 @@ def create_lr_lambda(step_epoch, lr_before_change, lr_after_change):
         else:
             return lr_after_change/lr_before_change
     return lr_lambda
+
+def create_lr_lambda_decay_by_10th(step_epoch, decay_rate, lr_before_change):
+    def lr_lambda(epoch):
+        if epoch < step_epoch:
+            return 1
+        else:
+            return lr_before_change*0.1**((epoch-step_epoch)//10)
+    return lr_lambda
+
 def softmax_weight(multi_task_learning_weight):
     return F.softmax(torch.stack([multi_task_learning_weight, 1- multi_task_learning_weight]))

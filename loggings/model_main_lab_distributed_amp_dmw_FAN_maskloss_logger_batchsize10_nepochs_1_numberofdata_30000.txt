@@ -1,0 +1,28 @@
+2024-08-29 15:27:26,254 - INFO - Experiment Config:
+2024-08-29 15:27:26,255 - INFO - embedding_dim: 768
+2024-08-29 15:27:26,255 - INFO - batchsize: 10
+2024-08-29 15:27:26,255 - INFO - nepochs: 1
+2024-08-29 15:27:26,255 - INFO - lr: 1e-05
+2024-08-29 15:27:26,255 - INFO - lr_after: 1e-06
+2024-08-29 15:27:26,255 - INFO - step_epoch: 30
+2024-08-29 15:27:26,255 - INFO - max_grad_norm: 5
+2024-08-29 15:27:26,255 - INFO - numberofdata: 30000
+2024-08-29 15:27:26,255 - INFO - world_size: 4
+2024-08-29 15:27:26,255 - INFO - train_test_rate: 0.7
+2024-08-29 15:29:09,289 - INFO - Test Loss: 0.0542, Accuracy Y: 0.97931137, Accuracy Z: 0.97560081
+2024-08-29 15:29:10,621 - INFO - ------------------------------------------------
+2024-08-29 15:29:10,621 - INFO - Recall for y task: 0.9795
+2024-08-29 15:29:10,621 - INFO - Precision for y task: 0.9795
+2024-08-29 15:29:10,621 - INFO - F1 Score for y task: 0.9795
+2024-08-29 15:29:10,621 - INFO - Plotting Confusion Matrix Heatmap for y task has finished!
+2024-08-29 15:29:10,621 - INFO - ------------------------------------------------
+2024-08-29 15:29:11,974 - INFO - ------------------------------------------------
+2024-08-29 15:29:11,974 - INFO - Recall for z task: 0.9760
+2024-08-29 15:29:11,974 - INFO - Precision for z task: 0.9760
+2024-08-29 15:29:11,974 - INFO - F1 Score for z task: 0.9760
+2024-08-29 15:29:11,974 - INFO - Plotting Confusion Matrix Heatmap for z task has finished!
+2024-08-29 15:29:11,974 - INFO - ------------------------------------------------
+2024-08-29 15:29:12,045 - INFO - Keyphrase accuracy calculation for y task is 0.7808888888888889
+2024-08-29 15:29:12,106 - INFO - Keyphrase accuracy calculation for z task is 0.6672222222222223
+2024-08-29 15:29:12,106 - INFO - Sentence based acc for y task:0.58611111
+2024-08-29 15:29:12,107 - INFO - Sentence based acc for z task:0.54044444

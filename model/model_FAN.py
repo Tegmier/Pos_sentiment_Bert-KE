@@ -27,15 +27,13 @@ class FinetuneBertFAN(nn.Module):
         Feedforward_layer_1 = self.Feedforward_1(embeddings)
         Feedforward_layer_2 = self.Feedforward_2(self.relu(Feedforward_layer_1))
         Feedforward_output = self.layer_norm(embeddings + Feedforward_layer_2)
-        #加入注意力计算模块得到注意力
         
-
-
+        #加入注意力计算模块得到注意力
         out1 = self.classifier_y(Feedforward_output)
         out2 = self.classifier_z(Feedforward_output)
         return out1, out2
 
-bert_model = BertModel.from_pretrained('bert-base-uncased',
+bert_model = BertModel.from_pretrained('bert-base-uncased', hidden_dropout_prob=0.1,
                                     #    quantization_config=bnb_config,
                                        device_map='cuda:0')
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')

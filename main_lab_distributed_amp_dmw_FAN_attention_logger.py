@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader, DistributedSampler
 from torch.utils.data import DataLoader
 from model.model_FAN_attention import FinetuneBertFANAttention, bert_model
 from utils.data_import import data_import
-from utils.learning_rate import create_lr_lambda
+from utils.learning_rate import create_lr_lambda, create_lr_lambda_decay_by_10th
 from utils.evaluation_tools import metrics_cal, keyphrase_acc_cal
 from utils.dictributed_env_setup import setup, cleanup
 from utils.dataloader import KE_Dataloader, batch_padding_tokenizing_collate_function
@@ -29,16 +29,17 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 embedding_dim = bert_model.config.hidden_size
 y_dim = 2
 z_dim = 5
-batchsize = 5
-nepochs = 2
+batchsize = 64
+nepochs = 50
 labels2idx = {'O': 0, 'B': 1, 'I': 2, 'E': 3, 'S': 4}
-lr = 0.00001
-lr_after = 0.000001
-step_epoch = 30
+lr = 0.0001
+lr_after = 0.00001
+step_epoch = 20
 max_grad_norm = 5
-numberofdata = 1000
+numberofdata = 30000
 world_size = 4  # 使用的 GPU 数量
 train_test_rate = 0.7
+decay_rate = 0.1
 model_name = "distributed_amp_dmw_FAN_attention"
 #############################################################################
 
@@ -64,8 +65,8 @@ def train(rank, world_size, data, logger):
     criterion = nn.CrossEntropyLoss(reduction='none').cuda(rank)
     optimizer = optim.AdamW(model.parameters(), lr=lr)
     #自适应学习率
-    scheduler = optim.lr_scheduler.LambdaLR(optimizer=optimizer, lr_lambda=create_lr_lambda(step_epoch=step_epoch, lr_before_change=lr, lr_after_change=lr_after))
-
+    # scheduler = optim.lr_scheduler.LambdaLR(optimizer=optimizer, lr_lambda=create_lr_lambda(step_epoch=step_epoch, lr_before_change=lr, lr_after_change=lr_after))
+    scheduler = optim.lr_scheduler.LambdaLR(optimizer=optimizer, lr_lambda=create_lr_lambda_decay_by_10th(step_epoch=step_epoch, decay_rate=decay_rate, lr_before_change=lr))
     # 初始化 GradScaler
     scaler = GradScaler()
     loss_for_visualization = []
@@ -146,6 +147,8 @@ def eval(data, logger):
             loss_y = criterion(y_pred, y)
             loss_z = criterion(z_pred, z)
             loss = (loss_y + loss_z) / 2
+            print(loss)
+            print(loss.shape)
             test_loss.append(loss.item())
             # use argmax to format the pred result
             y_pred = y_pred.argmax(dim=1)
@@ -193,6 +196,7 @@ if __name__ == "__main__":
                         , output_to_terminal=True)
     write_log(logger, embedding_dim, batchsize, nepochs, lr, lr_after, step_epoch, max_grad_norm, numberofdata, world_size, train_test_rate)
     # 使用 mp.spawn 启动多个进程
+
     mp.spawn(train, args=(world_size, training_data, logger), nprocs=world_size, join=True)
     training_loss = main_visualization(world_size)
     eval(test_data, logger)

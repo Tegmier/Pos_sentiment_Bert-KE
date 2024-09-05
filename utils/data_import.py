@@ -12,7 +12,6 @@ def data_import(numberofdata, train_test_rate):
     data = []
     for i in range(len(qualified_tweet_list)):
         data.append([qualified_tweet_list[i], qualified_tag_list[i]])
-
     data = data[:numberofdata]
     train_test_split = int(len(data)*train_test_rate)
     training_data = data[:train_test_split]
