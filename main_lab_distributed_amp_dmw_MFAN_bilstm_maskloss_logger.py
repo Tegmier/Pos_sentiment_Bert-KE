@@ -203,7 +203,7 @@ if __name__ == "__main__":
     # 设置logger
     logger = get_logger(path=f'loggings/model_{model_name}_batchsize{batchsize}_nepochs_{nepochs}_numberofdata_{numberofdata}.txt'
                         , output_to_terminal=True)
-    write_log(logger, embedding_dim, batchsize, nepochs, lr, lr_after, step_epoch, max_grad_norm, numberofdata, world_size, train_test_rate)
+    write_log(logger, model_name, embedding_dim, batchsize, nepochs, lr, lr_after, step_epoch, max_grad_norm, numberofdata, world_size, train_test_rate)
     # 使用 mp.spawn 启动多个进程
     mp.spawn(train, args=(world_size, training_data, logger), nprocs=world_size, join=True)
     training_loss = main_visualization(world_size)
