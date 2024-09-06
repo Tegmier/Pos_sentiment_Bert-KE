@@ -19,8 +19,9 @@ def get_logger(path, output_to_terminal):
 
     return logger
 
-def write_log(logger, embedding_dim, batchsize, nepochs, lr, lr_after, step_epoch, max_grad_norm, numberofdata, world_size, train_test_rate):
+def write_log(logger, model_name, embedding_dim, batchsize, nepochs, lr, lr_after, step_epoch, max_grad_norm, numberofdata, world_size, train_test_rate):
     logger.info("Experiment Config:")
+    logger.info(f"model_name: {model_name}")
     logger.info(f"embedding_dim: {embedding_dim}")
     logger.info(f"batchsize: {batchsize}")
     logger.info(f"nepochs: {nepochs}")
@@ -31,3 +32,4 @@ def write_log(logger, embedding_dim, batchsize, nepochs, lr, lr_after, step_epoc
     logger.info(f"numberofdata: {numberofdata}")
     logger.info(f"world_size: {world_size}")
     logger.info(f"train_test_rate: {train_test_rate}")
+    

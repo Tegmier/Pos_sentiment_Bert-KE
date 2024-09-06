@@ -7,11 +7,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import torch.multiprocessing as mp
+import math
 from torch.amp import GradScaler, autocast
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler
 from torch.utils.data import DataLoader
 from model.model_FAN import FinetuneBertFAN, bert_model
+from utils.dmw_cal import dmw_weight_cal_norm, dmw_weight_cal_exp, regular_weight_cal
 from utils.data_import import data_import
 from utils.learning_rate import create_lr_lambda, create_lr_lambda_decay_by_10th
 from utils.evaluation_tools import metrics_cal, keyphrase_acc_cal
@@ -30,13 +32,13 @@ embedding_dim = bert_model.config.hidden_size
 y_dim = 2
 z_dim = 5
 batchsize = 64
-nepochs = 60
+nepochs = 15
 labels2idx = {'O': 0, 'B': 1, 'I': 2, 'E': 3, 'S': 4}
 lr = 0.00005
 lr_after = 0.000001
 step_epoch = 25
 max_grad_norm = 5
-numberofdata = 40000
+numberofdata = 20000
 world_size = 4  # 使用的 GPU 数量
 train_test_rate = 0.7
 decay_rate = 0.5
@@ -75,6 +77,8 @@ def train(rank, world_size, data, logger):
         model.train()
         t_start = time.time()
         train_loss = []
+        #  DMW
+        weight1 = []
         for inputs in data_loader:
             with autocast(device_type='cuda'):
                 y = inputs["label_y"].cuda(rank)
@@ -92,20 +96,20 @@ def train(rank, world_size, data, logger):
                 loss_z = criterion(z_pred, z) * attention_mask.reshape(-1)
                 loss_y = loss_y.mean()
                 loss_z = loss_z.mean()
-                loss = (loss_y + loss_z) / 2
+                weight_task1, weight_task2 = dmw_weight_cal_exp(loss_y, loss_z)
+                loss = weight_task1 * loss_y + weight_task2 * loss_z
+                weight1.append(weight_task1)
             scaler.scale(loss).backward()
             nn.utils.clip_grad_norm_(model.parameters(), max_norm=max_grad_norm, norm_type=2)
             scaler.step(optimizer=optimizer)
             train_loss.append(loss.item())
             scaler.update()
         avg_loss = sum(train_loss) / len(train_loss)
+        avg_weight1 = sum(weight1)/ len(weight1)
         print(f"Rank {rank}, Epoch [{epoch + 1}/{nepochs}], Loss: {avg_loss:.8f}, Time: {time.time() - t_start:.2f}s")
+        print(f"Rank {rank}, weight1 {avg_weight1}, weight2 {1 - avg_weight1}")
         scheduler.step()
         loss_for_visualization.append(avg_loss)
-        # if epoch == nepochs-1:
-        #     print("--------------------------------------------------------")
-        #     print(f'attention: {attention}')
-        #     print("--------------------------------------------------------")
     pickle_write(loss_for_visualization, f"intermediate_data/rank{rank}_loss.pickle")
     if rank == 0:
         model_to_save = model.module

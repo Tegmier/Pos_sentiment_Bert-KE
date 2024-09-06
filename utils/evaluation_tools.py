@@ -1,4 +1,4 @@
-from sklearn.metrics import precision_score, recall_score, f1_score
+from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
 import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix
 import seaborn as sns
@@ -29,6 +29,13 @@ def metrics_cal(total_z, total_z_pred, type, logger):
     precision = precision_score(flattened_labels, flattened_preds, average='micro')
     f1 = f1_score(flattened_labels, flattened_preds, average='micro')
     cm = confusion_matrix(flattened_labels, flattened_preds)
+    if type == 'y task':
+        labels = [0, 1]
+    else:
+        labels = [0,1,2,3,4]
+    recall_n = recall_score(flattened_labels, flattened_preds, average=None, labels=labels)
+    precision_n = precision_score(flattened_labels, flattened_preds, average=None, labels=labels)
+    f1_n = f1_score(flattened_labels, flattened_preds, average=None, labels=labels)
 
     # draw confusion matrix
     plt.figure(figsize=(8, 6))
@@ -40,8 +47,14 @@ def metrics_cal(total_z, total_z_pred, type, logger):
     plt.show()
     
     logger.info("------------------------------------------------")
-    logger.info(f'Recall for {type}: {recall:.4f}')
-    logger.info(f'Precision for {type}: {precision:.4f}')
-    logger.info(f'F1 Score for {type}: {f1:.4f}')
+    logger.info("AVERAGE = MICRO: ")
+    logger.info(f'Recall for {type}: {recall:.8f}')
+    logger.info(f'Precision for {type}: {precision:.8f}')
+    logger.info(f'F1 Score for {type}: {f1:.8f}')
+    logger.info(f'Plotting Confusion Matrix Heatmap for {type} has finished!')
+    logger.info("AVERAGE = NONE: ")
+    logger.info(f'Recall for {type}: {recall_n}')
+    logger.info(f'Precision for {type}: {precision_n}')
+    logger.info(f'F1 Score for {type}: {f1_n}')
     logger.info(f'Plotting Confusion Matrix Heatmap for {type} has finished!')
     logger.info("------------------------------------------------")

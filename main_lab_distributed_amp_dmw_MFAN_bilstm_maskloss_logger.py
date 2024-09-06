@@ -30,7 +30,7 @@ embedding_dim = bert_model.config.hidden_size
 y_dim = 2
 z_dim = 5
 batchsize = 64
-nepochs = 60
+nepochs = 1
 labels2idx = {'O': 0, 'B': 1, 'I': 2, 'E': 3, 'S': 4}
 lr = 0.00005
 lr_after = 0.000001
@@ -92,7 +92,11 @@ def train(rank, world_size, data, logger):
                 loss_z = criterion(z_pred, z) * attention_mask.reshape(-1)
                 loss_y = loss_y.mean()
                 loss_z = loss_z.mean()
-                loss = (loss_y + loss_z) / 2
+                total_loss = loss_y + loss_z
+                weight_task1 = loss_y/total_loss
+                weight_task2 = loss_z/total_loss
+                loss = weight_task1 * loss_y + weight_task2 * loss_z
+                # loss = (loss_y + loss_z) / 2
             scaler.scale(loss).backward()
             nn.utils.clip_grad_norm_(model.parameters(), max_norm=max_grad_norm, norm_type=2)
             scaler.step(optimizer=optimizer)

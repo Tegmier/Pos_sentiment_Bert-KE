@@ -10,7 +10,7 @@ import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler
 from torch.utils.data import DataLoader
-from utils.model_FAN import FinetuneBertFAN, bert_model
+from model.model_FAN import FinetuneBertFAN, bert_model
 from utils.data_import import data_import
 from utils.learning_rate import create_lr_lambda
 from utils.evaluation_tools import metrics_cal
@@ -26,7 +26,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 embedding_dim = bert_model.config.hidden_size
 y_dim = 2
 z_dim = 5
-batchsize = 10
+batchsize = 64
 nepochs = 20
 labels2idx = {'O': 0, 'B': 1, 'I': 2, 'E': 3, 'S': 4}
 lr = 0.00001

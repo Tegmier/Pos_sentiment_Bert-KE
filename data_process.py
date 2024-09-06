@@ -9,7 +9,7 @@ from tqdm import tqdm
 # 设置transformers库的日志级别为ERROR，仅显示Error及以上级别的消息
 logging.getLogger("transformers").setLevel(logging.ERROR)
 
-# 定义BIOES字典
+# 定义BIOES字典 O:out, B:begin  I:inside, E:end, S:start
 labels2idx = {'O': 0, 'B': 1, 'I': 2, 'E': 3, 'S': 4}
 
 spacy_model = spacy.load('en_core_web_sm')
