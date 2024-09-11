@@ -1,32 +1,29 @@
-import os
-import warnings
-import time
-import numpy as np
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-import torch.multiprocessing as mp
+from utils.data_import import data_import
+from utils.create_dic import voc_create
+from utils.contrast_poe_dataloader import contrast_poe_dataloader,batch_padding
+from torch.utils.data import DataLoader
+from model.contrast_lstm import contrast_lstm
 from torch.amp import GradScaler, autocast
+from utils.pickle_opt import pickle_write, pickle_read
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler
-from torch.utils.data import DataLoader
-from model.model_MFAN_MLP import FinetuneBertMFANMLP, bert_model
-from utils.data_import import data_import
+import time
+import torch
+import torch.optim as optim
+import torch.nn as nn
+from utils.dmw_cal import dmw_weight_cal_exp, dmw_weight_cal_norm, regular_weight_cal
 from utils.learning_rate import create_lr_lambda, create_lr_lambda_decay_by_10th
-from utils.evaluation_tools import metrics_cal, keyphrase_acc_cal
 from utils.dictributed_env_setup import setup, cleanup
-from utils.dataloader import KE_Dataloader, batch_padding_tokenizing_collate_function
-from utils.loss_manipulation_and_visualization_utils import main_visualization
-from utils.pickle_opt import pickle_read, pickle_write
+import numpy as np
+from utils.evaluation_tools import metrics_cal, keyphrase_acc_cal
+import os
 from utils.loggings import get_logger, write_log
-
-# 禁用特定类型的警告，例如 FutureWarning
-warnings.filterwarnings("ignore", category=FutureWarning)
-
+import torch.multiprocessing as mp
+from utils.loss_manipulation_and_visualization_utils import main_visualization
+from utils.contrast_data_import import contrast_data_import
 #############################################################################
 # Global Training Parameters
-embedding_dim = bert_model.config.hidden_size
+embedding_dim = 768
 y_dim = 2
 z_dim = 5
 batchsize = 64
@@ -39,36 +36,31 @@ max_grad_norm = 5
 numberofdata = 40000
 world_size = 4  # 使用的 GPU 数量
 train_test_rate = 0.7
-decay_rate = 0.5
-model_name = "main_lab_distributed_amp_dmw_FAN_maskloss_logger"
+decay_rate = 0.8
+model_name = "contrast_POE_lstm"
 #############################################################################
 
-# 训练函数
+
+training_data, test_data = data_import(numberofdata=numberofdata, train_test_rate=train_test_rate)
+lex,y,z,word2idx = voc_create()
+vocab_size = len(word2idx)
+
 def train(rank, world_size, data, logger):
-    # 设置分布式环境
     setup(rank, world_size)
-    # 创建数据集和采样器
-    dataset = KE_Dataloader(data)
+    dataset = contrast_poe_dataloader(data=data)
     sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank)
     data_loader = DataLoader(
         dataset,
         batch_size=batchsize,
         sampler=sampler,
-        collate_fn=batch_padding_tokenizing_collate_function
+        collate_fn=batch_padding
     )
-
-    # 初始化模型
-    model = FinetuneBertMFANMLP(bert_model=bert_model, y_dim=y_dim, z_dim=z_dim, embedding_dim=embedding_dim).cuda(rank)
+    model = contrast_lstm(vocab_size, y_dim, z_dim, embedding_dim).cuda(rank)
     model = DDP(model, device_ids=[rank], find_unused_parameters=True)  # 包装模型
-
-    # 初始化损失函数和优化器
-    criterion = nn.CrossEntropyLoss(reduction='none').cuda(rank)
     optimizer = optim.AdamW(model.parameters(), lr=lr)
-    #自适应学习率
-    # scheduler = optim.lr_scheduler.LambdaLR(optimizer=optimizer, lr_lambda=create_lr_lambda(step_epoch=step_epoch, lr_before_change=lr, lr_after_change=lr_after))
-    scheduler = optim.lr_scheduler.LambdaLR(optimizer=optimizer, lr_lambda=create_lr_lambda_decay_by_10th(step_epoch=step_epoch, decay_rate=decay_rate, lr_before_change=lr))
-    # 初始化 GradScaler
     scaler = GradScaler()
+    criterion = nn.CrossEntropyLoss(reduction='none').cuda(rank)
+    scheduler = optim.lr_scheduler.LambdaLR(optimizer=optimizer, lr_lambda=create_lr_lambda_decay_by_10th(step_epoch=step_epoch, decay_rate=decay_rate, lr_before_change=lr))
     loss_for_visualization = []
     for epoch in range(nepochs):
         print(f"Rank {rank}, Start epoch {epoch + 1}/{nepochs}")
@@ -79,20 +71,19 @@ def train(rank, world_size, data, logger):
             with autocast(device_type='cuda'):
                 y = inputs["label_y"].cuda(rank)
                 z = inputs["label_z"].cuda(rank)
-                # attention_mask batch*seq
-                attention_mask = inputs["attention_mask"].cuda(rank)
                 optimizer.zero_grad()
                 y_pred, z_pred = model(inputs)
                 y_pred = y_pred.reshape(-1, y_dim)
                 z_pred = z_pred.reshape(-1, z_dim)
                 y = y.reshape(-1)
                 z = z.reshape(-1)
-
-                loss_y = criterion(y_pred, y) * attention_mask.reshape(-1)
-                loss_z = criterion(z_pred, z) * attention_mask.reshape(-1)
+                loss_y = criterion(y_pred, y)
+                loss_z = criterion(z_pred, z)
                 loss_y = loss_y.mean()
                 loss_z = loss_z.mean()
-                loss = (loss_y + loss_z) / 2
+                weight_task1, weight_task2 = dmw_weight_cal_exp(loss_y, loss_z)
+                loss = weight_task1 * loss_y + weight_task2 * loss_z
+                # loss = (loss_y + loss_z) / 2
             scaler.scale(loss).backward()
             nn.utils.clip_grad_norm_(model.parameters(), max_norm=max_grad_norm, norm_type=2)
             scaler.step(optimizer=optimizer)
@@ -109,12 +100,13 @@ def train(rank, world_size, data, logger):
     pickle_write(loss_for_visualization, f"intermediate_data/rank{rank}_loss.pickle")
     if rank == 0:
         model_to_save = model.module
-        torch.save(model_to_save.state_dict(), f'checkpoint/model_checkpoint_{batchsize}_{step_epoch}_{nepochs}_{numberofdata}.pth')
+        torch.save(model_to_save.state_dict(), f'checkpoint/model_checkpoint_{model_name}_{batchsize}_{step_epoch}_{nepochs}_{numberofdata}.pth')
     cleanup()
 
+
 def eval(data, logger):
-    model = FinetuneBertMFANMLP(bert_model=bert_model, y_dim=y_dim, z_dim=z_dim, embedding_dim=embedding_dim).cuda()
-    model.load_state_dict(torch.load(f'checkpoint/model_checkpoint_{batchsize}_{step_epoch}_{nepochs}_{numberofdata}.pth'))
+    model = contrast_lstm(vocab_size, y_dim, z_dim, embedding_dim).cuda()
+    model.load_state_dict(torch.load(f'checkpoint/model_checkpoint_{model_name}_{batchsize}_{step_epoch}_{nepochs}_{numberofdata}.pth'))
     test_loss = []
     acc_y, acc_z = [], []
     total_z, total_z_pred = [], []
@@ -123,11 +115,11 @@ def eval(data, logger):
     keyphrase_acc_y, keyphrase_acc_z = [], []
     keyphrase_acc_y_pred, keyphrase_acc_z_pred = [], []
     # 创建数据集和采样器
-    testdata = KE_Dataloader(data)
+    testdata = contrast_poe_dataloader(data)
     test_loader = DataLoader(
         testdata,
         batch_size=batchsize,
-        collate_fn=batch_padding_tokenizing_collate_function
+        collate_fn=batch_padding
     )
     # 指标计算准备
     model.eval()
@@ -139,7 +131,6 @@ def eval(data, logger):
             # y/z:(batch_size, seq)
             y = inputs['label_y'].cuda()
             z = inputs['label_z'].cuda()
-            attention_mask = inputs["attention_mask"].cuda()
             batch_size = y.size(0)
             y_pred, z_pred = model(inputs)
             y_pred = y_pred.reshape(-1, y_dim)
@@ -150,9 +141,12 @@ def eval(data, logger):
             keyphrase_acc_y.append(np.array(y.reshape(batch_size, -1).cpu()))
             keyphrase_acc_z.append(np.array(z.reshape(batch_size, -1).cpu()))
             # loss calculation
-            loss_y = criterion(y_pred, y) * attention_mask.reshape(-1)
-            loss_z = criterion(z_pred, z) * attention_mask.reshape(-1)
-            loss = (loss_y + loss_z) / 2
+            loss_y = criterion(y_pred, y)
+            loss_z = criterion(z_pred, z)
+            loss_y = loss_y.mean()
+            loss_z = loss_z.mean()
+            weight_task1, weight_task2 = dmw_weight_cal_exp(loss_y, loss_z)
+            loss = weight_task1 * loss_y + weight_task2 * loss_z
             test_loss.append(loss.mean().item())
             # use argmax to format the pred result
             y_pred = y_pred.argmax(dim=1)
@@ -169,8 +163,8 @@ def eval(data, logger):
             acc_y.append((y_pred == y).sum().item()/(y_pred.numel()))
             acc_z.append((z_pred == z).sum().item()/(z_pred.numel()))
             # cal rows_equal_y & rows_equal_z
-            rows_equal_y = torch.all(y_pred.reshape(batch_size, -1)*attention_mask == y.reshape(batch_size, -1)*attention_mask, dim = 1)
-            rows_equal_z = torch.all(z_pred.reshape(batch_size, -1)*attention_mask == z.reshape(batch_size, -1)*attention_mask, dim = 1)
+            rows_equal_y = torch.all(y_pred.reshape(batch_size, -1) == y.reshape(batch_size, -1), dim = 1)
+            rows_equal_z = torch.all(z_pred.reshape(batch_size, -1) == z.reshape(batch_size, -1), dim = 1)
             sentence_based_acc_y.append([rows_equal_y.sum().item(), batch_size])
             sentence_based_acc_z.append([rows_equal_z.sum().item(), batch_size])
     test_loss = np.array(test_loss).mean()
@@ -194,7 +188,7 @@ if __name__ == "__main__":
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '12355'
 
-    training_data, test_data = data_import(numberofdata=numberofdata, train_test_rate=train_test_rate)
+    training_data, test_data = contrast_data_import(numberofdata=numberofdata, train_test_rate=train_test_rate, lex =lex, y=y ,z=z)
     print(f"the total number of data is {len(training_data)}")
     # 设置logger
     logger = get_logger(path=f'loggings/model_{model_name}_batchsize{batchsize}_nepochs_{nepochs}_numberofdata_{numberofdata}.txt'
@@ -204,4 +198,3 @@ if __name__ == "__main__":
     mp.spawn(train, args=(world_size, training_data, logger), nprocs=world_size, join=True)
     training_loss = main_visualization(world_size)
     eval(test_data, logger)
-    

@@ -1,0 +1,12 @@
+2024-09-11 19:47:30,937 - INFO - Experiment Config:
+2024-09-11 19:47:30,937 - INFO - model_name: main_lab_distributed_amp_dmw_MFAN_MLP_maskloss_logger
+2024-09-11 19:47:30,937 - INFO - embedding_dim: 768
+2024-09-11 19:47:30,937 - INFO - batchsize: 64
+2024-09-11 19:47:30,937 - INFO - nepochs: 60
+2024-09-11 19:47:30,938 - INFO - lr: 0.0001
+2024-09-11 19:47:30,938 - INFO - lr_after: 1e-06
+2024-09-11 19:47:30,938 - INFO - step_epoch: 25
+2024-09-11 19:47:30,938 - INFO - max_grad_norm: 5
+2024-09-11 19:47:30,938 - INFO - numberofdata: 60000
+2024-09-11 19:47:30,938 - INFO - world_size: 4
+2024-09-11 19:47:30,938 - INFO - train_test_rate: 0.7

@@ -20,6 +20,7 @@ from utils.dataloader import KE_Dataloader, batch_padding_tokenizing_collate_fun
 from utils.loss_manipulation_and_visualization_utils import main_visualization
 from utils.pickle_opt import pickle_read, pickle_write
 from utils.loggings import get_logger, write_log
+from utils.dmw_cal import dmw_weight_cal_exp, dmw_weight_cal_norm, regular_weight_cal
 
 # 禁用特定类型的警告，例如 FutureWarning
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -30,17 +31,17 @@ embedding_dim = bert_model.config.hidden_size
 y_dim = 2
 z_dim = 5
 batchsize = 64
-nepochs = 1
+nepochs = 60
 labels2idx = {'O': 0, 'B': 1, 'I': 2, 'E': 3, 'S': 4}
-lr = 0.00005
+lr = 0.0001
 lr_after = 0.000001
 step_epoch = 25
 max_grad_norm = 5
-numberofdata = 40000
+numberofdata = 60000
 world_size = 4  # 使用的 GPU 数量
 train_test_rate = 0.7
-decay_rate = 0.5
-model_name = "main_lab_distributed_amp_dmw_FAN_maskloss_logger"
+decay_rate = 0.8
+model_name = "main_lab_distributed_amp_dmw_MFAN_bilstm_maskloss_logger"
 #############################################################################
 
 # 训练函数
@@ -92,9 +93,7 @@ def train(rank, world_size, data, logger):
                 loss_z = criterion(z_pred, z) * attention_mask.reshape(-1)
                 loss_y = loss_y.mean()
                 loss_z = loss_z.mean()
-                total_loss = loss_y + loss_z
-                weight_task1 = loss_y/total_loss
-                weight_task2 = loss_z/total_loss
+                weight_task1, weight_task2 = dmw_weight_cal_exp(loss_y, loss_z)
                 loss = weight_task1 * loss_y + weight_task2 * loss_z
                 # loss = (loss_y + loss_z) / 2
             scaler.scale(loss).backward()
@@ -113,12 +112,12 @@ def train(rank, world_size, data, logger):
     pickle_write(loss_for_visualization, f"intermediate_data/rank{rank}_loss.pickle")
     if rank == 0:
         model_to_save = model.module
-        torch.save(model_to_save.state_dict(), f'checkpoint/model_checkpoint_{batchsize}_{step_epoch}_{nepochs}_{numberofdata}.pth')
+        torch.save(model_to_save.state_dict(), f'checkpoint/model_checkpoint_{model_name}_{batchsize}_{step_epoch}_{nepochs}_{numberofdata}.pth')
     cleanup()
 
 def eval(data, logger):
     model = FinetuneBertMFANbilstm(bert_model=bert_model, y_dim=y_dim, z_dim=z_dim, embedding_dim=embedding_dim).cuda()
-    model.load_state_dict(torch.load(f'checkpoint/model_checkpoint_{batchsize}_{step_epoch}_{nepochs}_{numberofdata}.pth'))
+    model.load_state_dict(torch.load(f'checkpoint/model_checkpoint_{model_name}_{batchsize}_{step_epoch}_{nepochs}_{numberofdata}.pth'))
     test_loss = []
     acc_y, acc_z = [], []
     total_z, total_z_pred = [], []
@@ -156,7 +155,10 @@ def eval(data, logger):
             # loss calculation
             loss_y = criterion(y_pred, y) * attention_mask.reshape(-1)
             loss_z = criterion(z_pred, z) * attention_mask.reshape(-1)
-            loss = (loss_y + loss_z) / 2
+            loss_y = loss_y.mean()
+            loss_z = loss_z.mean()
+            weight_task1, weight_task2 = dmw_weight_cal_exp(loss_y, loss_z)
+            loss = weight_task1 * loss_y + weight_task2 * loss_z
             test_loss.append(loss.mean().item())
             # use argmax to format the pred result
             y_pred = y_pred.argmax(dim=1)
@@ -208,4 +210,5 @@ if __name__ == "__main__":
     mp.spawn(train, args=(world_size, training_data, logger), nprocs=world_size, join=True)
     training_loss = main_visualization(world_size)
     eval(test_data, logger)
+    
     

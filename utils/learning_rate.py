@@ -16,7 +16,7 @@ def create_lr_lambda_decay_by_10th(step_epoch, decay_rate, lr_before_change):
         if epoch < step_epoch:
             return 1
         else:
-            return lr_before_change*0.5**((epoch-step_epoch)//10)
+            return decay_rate**((epoch-step_epoch)//10)
     return lr_lambda
 
 def softmax_weight(multi_task_learning_weight):

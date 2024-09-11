@@ -7,13 +7,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import torch.multiprocessing as mp
-import math
 from torch.amp import GradScaler, autocast
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler
 from torch.utils.data import DataLoader
-from model.model_FAN import FinetuneBertFAN, bert_model
-from utils.dmw_cal import dmw_weight_cal_norm, dmw_weight_cal_exp, regular_weight_cal
+from model.model_MFAN_MLP import FinetuneBertMFANMLP, bert_model
 from utils.data_import import data_import
 from utils.learning_rate import create_lr_lambda, create_lr_lambda_decay_by_10th
 from utils.evaluation_tools import metrics_cal, keyphrase_acc_cal
@@ -22,6 +20,7 @@ from utils.dataloader import KE_Dataloader, batch_padding_tokenizing_collate_fun
 from utils.loss_manipulation_and_visualization_utils import main_visualization
 from utils.pickle_opt import pickle_read, pickle_write
 from utils.loggings import get_logger, write_log
+from utils.dmw_cal import dmw_weight_cal_norm, dmw_weight_cal_exp, regular_weight_cal
 
 # 禁用特定类型的警告，例如 FutureWarning
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -32,17 +31,17 @@ embedding_dim = bert_model.config.hidden_size
 y_dim = 2
 z_dim = 5
 batchsize = 64
-nepochs = 60
+nepochs = 80
 labels2idx = {'O': 0, 'B': 1, 'I': 2, 'E': 3, 'S': 4}
-lr = 0.0001
+lr = 0.00001
 lr_after = 0.000001
 step_epoch = 25
 max_grad_norm = 5
-numberofdata = 20000
+numberofdata = 60000
 world_size = 4  # 使用的 GPU 数量
 train_test_rate = 0.7
-decay_rate = 0.5
-model_name = "main_lab_distributed_amp_dmw_FAN_maskloss_logger"
+decay_rate = 0.8
+model_name = "main_lab_distributed_amp_dmw_MFAN_MLP_maskloss_logger"
 #############################################################################
 
 # 训练函数
@@ -60,7 +59,7 @@ def train(rank, world_size, data, logger):
     )
 
     # 初始化模型
-    model = FinetuneBertFAN(bert_model=bert_model, y_dim=y_dim, z_dim=z_dim, embedding_dim=embedding_dim).cuda(rank)
+    model = FinetuneBertMFANMLP(bert_model=bert_model, y_dim=y_dim, z_dim=z_dim, embedding_dim=embedding_dim).cuda(rank)
     model = DDP(model, device_ids=[rank], find_unused_parameters=True)  # 包装模型
 
     # 初始化损失函数和优化器
@@ -77,8 +76,6 @@ def train(rank, world_size, data, logger):
         model.train()
         t_start = time.time()
         train_loss = []
-        #  DMW
-        weight1 = []
         for inputs in data_loader:
             with autocast(device_type='cuda'):
                 y = inputs["label_y"].cuda(rank)
@@ -98,27 +95,24 @@ def train(rank, world_size, data, logger):
                 loss_z = loss_z.mean()
                 weight_task1, weight_task2 = dmw_weight_cal_exp(loss_y, loss_z)
                 loss = weight_task1 * loss_y + weight_task2 * loss_z
-                weight1.append(weight_task1)
             scaler.scale(loss).backward()
             nn.utils.clip_grad_norm_(model.parameters(), max_norm=max_grad_norm, norm_type=2)
             scaler.step(optimizer=optimizer)
             train_loss.append(loss.item())
             scaler.update()
         avg_loss = sum(train_loss) / len(train_loss)
-        avg_weight1 = sum(weight1)/ len(weight1)
         print(f"Rank {rank}, Epoch [{epoch + 1}/{nepochs}], Loss: {avg_loss:.8f}, Time: {time.time() - t_start:.2f}s")
-        print(f"Rank {rank}, weight1 {avg_weight1}, weight2 {1 - avg_weight1}")
         scheduler.step()
         loss_for_visualization.append(avg_loss)
     pickle_write(loss_for_visualization, f"intermediate_data/rank{rank}_loss.pickle")
     if rank == 0:
         model_to_save = model.module
-        torch.save(model_to_save.state_dict(), f'checkpoint/model_checkpoint_{batchsize}_{step_epoch}_{nepochs}_{numberofdata}.pth')
+        torch.save(model_to_save.state_dict(), f'checkpoint/model_checkpoint_{model_name}_{batchsize}_{step_epoch}_{nepochs}_{numberofdata}.pth')
     cleanup()
 
 def eval(data, logger):
-    model = FinetuneBertFAN(bert_model=bert_model, y_dim=y_dim, z_dim=z_dim, embedding_dim=embedding_dim).cuda()
-    model.load_state_dict(torch.load(f'checkpoint/model_checkpoint_{batchsize}_{step_epoch}_{nepochs}_{numberofdata}.pth'))
+    model = FinetuneBertMFANMLP(bert_model=bert_model, y_dim=y_dim, z_dim=z_dim, embedding_dim=embedding_dim).cuda()
+    model.load_state_dict(torch.load(f'checkpoint/model_checkpoint_{model_name}_{batchsize}_{step_epoch}_{nepochs}_{numberofdata}.pth'))
     test_loss = []
     acc_y, acc_z = [], []
     total_z, total_z_pred = [], []
@@ -156,7 +150,10 @@ def eval(data, logger):
             # loss calculation
             loss_y = criterion(y_pred, y) * attention_mask.reshape(-1)
             loss_z = criterion(z_pred, z) * attention_mask.reshape(-1)
-            loss = (loss_y + loss_z) / 2
+            loss_y = loss_y.mean()
+            loss_z = loss_z.mean()
+            weight_task1, weight_task2 = dmw_weight_cal_exp(loss_y, loss_z)
+            loss = weight_task1 * loss_y + weight_task2 * loss_z
             test_loss.append(loss.mean().item())
             # use argmax to format the pred result
             y_pred = y_pred.argmax(dim=1)
