@@ -1,6 +1,7 @@
 import os
 import warnings
 import time
+from functools import partial
 import numpy as np
 import torch
 import torch.nn as nn
@@ -15,12 +16,25 @@ from model.model_MFAN_MLP import FinetuneBertMFANMLP, bert_model
 from utils.data_import import data_import
 from utils.learning_rate import create_lr_lambda, create_lr_lambda_decay_by_10th
 from utils.evaluation_tools import metrics_cal, keyphrase_acc_cal
+from utils.evaluation_tools_keyposition import metrics_cal_keyposition
 from utils.dictributed_env_setup import setup, cleanup
 from utils.dataloader import KE_Dataloader, batch_padding_tokenizing_collate_function
 from utils.loss_manipulation_and_visualization_utils import main_visualization
 from utils.pickle_opt import pickle_read, pickle_write
 from utils.loggings import get_logger, write_log
 from utils.dmw_cal import dmw_weight_cal_norm, dmw_weight_cal_exp, regular_weight_cal
+from transformers import BertModel, BertTokenizer
+#############################################################################
+from model.model_MFAN_MLP import FinetuneBertMFANMLP
+from model.model_MFAN_lstm import FinetuneBertMFANlstm
+from model.model_MFAN_bilstm import FinetuneBertMFANbilstm
+from model.model_MFAN_rnn import FinetuneBertMFANrnn
+from model.model_MFAN_birnn import FinetuneBertMFANbirnn
+from model.model_MFAN_gru import FinetuneBertMFANgru
+from model.model_MFAN_bigru import FinetuneBertMFANbigru
+from model.model_MFAN_bilstm_two_stacked_lstm import FinetuneBertMFANbilstmStackLayer
+from model.model_MFAN_bilstm_same_lstm import FinetuneBertMFANbilstmsamelstm
+from model.model_MFAN_bilstm_one_lstm_two_output import FinetuneBertMFANbilstmtwooutput
 
 # 禁用特定类型的警告，例如 FutureWarning
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -31,18 +45,20 @@ embedding_dim = bert_model.config.hidden_size
 y_dim = 2
 z_dim = 5
 batchsize = 64
-nepochs = 80
+nepochs = 30
 labels2idx = {'O': 0, 'B': 1, 'I': 2, 'E': 3, 'S': 4}
-lr = 0.00001
+lr = 0.0001
 lr_after = 0.000001
-step_epoch = 25
+step_epoch = 60
 max_grad_norm = 5
-numberofdata = 60000
+numberofdata = 40000
 world_size = 4  # 使用的 GPU 数量
 train_test_rate = 0.7
 decay_rate = 0.8
-model_name = "main_lab_distributed_amp_dmw_MFAN_MLP_maskloss_logger"
+model_name = "FinetuneBertMFANbilstmtwooutput"
+tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 #############################################################################
+selected_model = FinetuneBertMFANbilstmtwooutput
 
 # 训练函数
 def train(rank, world_size, data, logger):
@@ -51,15 +67,16 @@ def train(rank, world_size, data, logger):
     # 创建数据集和采样器
     dataset = KE_Dataloader(data)
     sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank)
+    batch_padding_tokenizing_collate_function_with_params = partial(batch_padding_tokenizing_collate_function, tokenizer = tokenizer)
     data_loader = DataLoader(
         dataset,
         batch_size=batchsize,
         sampler=sampler,
-        collate_fn=batch_padding_tokenizing_collate_function
+        collate_fn=batch_padding_tokenizing_collate_function_with_params
     )
 
     # 初始化模型
-    model = FinetuneBertMFANMLP(bert_model=bert_model, y_dim=y_dim, z_dim=z_dim, embedding_dim=embedding_dim).cuda(rank)
+    model = selected_model(bert_model=bert_model, y_dim=y_dim, z_dim=z_dim, embedding_dim=embedding_dim).cuda(rank)
     model = DDP(model, device_ids=[rank], find_unused_parameters=True)  # 包装模型
 
     # 初始化损失函数和优化器
@@ -80,6 +97,8 @@ def train(rank, world_size, data, logger):
             with autocast(device_type='cuda'):
                 y = inputs["label_y"].cuda(rank)
                 z = inputs["label_z"].cuda(rank)
+                mask_y = inputs["mask_y"].cuda(rank)
+                mask_z = inputs["mask_z"].cuda(rank)
                 # attention_mask batch*seq
                 attention_mask = inputs["attention_mask"].cuda(rank)
                 optimizer.zero_grad()
@@ -111,33 +130,34 @@ def train(rank, world_size, data, logger):
     cleanup()
 
 def eval(data, logger):
-    model = FinetuneBertMFANMLP(bert_model=bert_model, y_dim=y_dim, z_dim=z_dim, embedding_dim=embedding_dim).cuda()
+    model = selected_model(bert_model=bert_model, y_dim=y_dim, z_dim=z_dim, embedding_dim=embedding_dim).cuda()
     model.load_state_dict(torch.load(f'checkpoint/model_checkpoint_{model_name}_{batchsize}_{step_epoch}_{nepochs}_{numberofdata}.pth'))
     test_loss = []
     acc_y, acc_z = [], []
     total_z, total_z_pred = [], []
     total_y, total_y_pred = [], []
+    total_y_keyposition, total_y_pred_keyposition, total_z_keyposition, total_z_pred_keyposition = [], [], [], []
     sentence_based_acc_y, sentence_based_acc_z = [], []
     keyphrase_acc_y, keyphrase_acc_z = [], []
     keyphrase_acc_y_pred, keyphrase_acc_z_pred = [], []
     # 创建数据集和采样器
     testdata = KE_Dataloader(data)
+    batch_padding_tokenizing_collate_function_with_params = partial(batch_padding_tokenizing_collate_function, tokenizer = tokenizer)
     test_loader = DataLoader(
         testdata,
         batch_size=batchsize,
-        collate_fn=batch_padding_tokenizing_collate_function
+        collate_fn=batch_padding_tokenizing_collate_function_with_params
     )
     # 指标计算准备
     model.eval()
     criterion = nn.CrossEntropyLoss(reduction="none").cuda()
     with torch.no_grad():
         for inputs in test_loader:
-            # keyphrase_acc_cal计算的是keyphrase完整度
-            # row_equality计算的是句子完整度
-            # y/z:(batch_size, seq)
             y = inputs['label_y'].cuda()
             z = inputs['label_z'].cuda()
             attention_mask = inputs["attention_mask"].cuda()
+            mask_y = inputs["mask_y"].cuda()
+            mask_z = inputs["mask_z"].cuda()
             batch_size = y.size(0)
             y_pred, z_pred = model(inputs)
             y_pred = y_pred.reshape(-1, y_dim)
@@ -162,6 +182,10 @@ def eval(data, logger):
             keyphrase_acc_y_pred.append(np.array(y_pred.reshape(batch_size, -1).cpu()))
             keyphrase_acc_z_pred.append(np.array(z_pred.reshape(batch_size, -1).cpu()))
             # save labels and predicts
+            total_y_keyposition.append(np.array(y[mask_y.reshape(-1)].cpu()))
+            total_z_keyposition.append(np.array(z[mask_z.reshape(-1)].cpu()))
+            total_y_pred_keyposition.append(np.array(y_pred[mask_y.reshape(-1)].cpu()))
+            total_z_pred_keyposition.append(np.array(z_pred[mask_z.reshape(-1)].cpu()))
             total_z.append(np.array(z.cpu()))
             total_z_pred.append(np.array(z_pred.cpu()))
             total_y.append(np.array(y.cpu()))
@@ -180,6 +204,8 @@ def eval(data, logger):
     logger.info(f'Test Loss: {test_loss:.4f}, Accuracy Y: {accuracy_y:.8f}, Accuracy Z: {accuracy_z:.8f}')
     metrics_cal(total_y, total_y_pred, type = "y task", logger=logger)
     metrics_cal(total_z, total_z_pred, type = "z task", logger=logger)
+    # metrics_cal_keyposition(total_y_keyposition, total_y_pred_keyposition, type = "y task", logger=logger)
+    # metrics_cal_keyposition(total_z_keyposition, total_z_pred_keyposition, type = "z task", logger=logger)
     keyphrase_acc_cal(keyphrase_acc_y, keyphrase_acc_y_pred, type = "y task", logger=logger)
     keyphrase_acc_cal(keyphrase_acc_z, keyphrase_acc_z_pred, type = "z task", logger=logger)
     sentence_based_acc_y = np.array(sentence_based_acc_y)

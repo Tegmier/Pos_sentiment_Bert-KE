@@ -16,6 +16,7 @@ class contrast_poe_dataloader(Dataset):
 
 def batch_padding(batch):
     lex, y, z = zip(*batch)
+
     lex = [torch.tensor(s).cuda() for s in list(lex)]
     y = [torch.tensor(s).cuda() for s in list(y)]
     z = [torch.tensor(s).cuda() for s in list(z)]
@@ -23,8 +24,14 @@ def batch_padding(batch):
     y = pad_sequence(y, batch_first=True, padding_value=0)
     z = pad_sequence(z, batch_first=True, padding_value=0)
     output = {}
+    mask = lex != 0
+    mask_y = y !=0
+    mask_z = z !=0
     output["lex"] = lex
     output["label_y"] = y
     output["label_z"] = z
+    output["mask"] = mask
+    output["mask_y"] = mask_y
+    output["mask_z"] = mask_z
     return output
 

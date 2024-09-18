@@ -6,7 +6,7 @@ class MLPFANBlock(nn.Module):
     def __init__(self, embedding_dim) -> None:
         super(MLPFANBlock, self).__init__()
         self.embedding_dim = embedding_dim
-        self.hidden_num_layer = 6
+        self.hidden_num_layer = 3
         self.Feedforward_1 = nn.Linear(embedding_dim, embedding_dim)
         self.Feedforward_2 = nn.Linear(embedding_dim, embedding_dim)
         self.layer_norm = nn.LayerNorm(embedding_dim)
@@ -25,7 +25,7 @@ class FinetuneBertMFANMLP(nn.Module):
     def __init__(self, bert_model, y_dim, z_dim, embedding_dim):
         super(FinetuneBertMFANMLP, self).__init__()
         self.bert = bert_model
-        self.mlp_num_layer = 6
+        self.mlp_num_layer = 3
         self.embedding_dim = embedding_dim
         self.blocklist_1 = nn.ModuleList([MLPFANBlock(embedding_dim) for _ in range(self.mlp_num_layer)])
         self.blocklist_2 = nn.ModuleList([MLPFANBlock(embedding_dim) for _ in range(self.mlp_num_layer)])

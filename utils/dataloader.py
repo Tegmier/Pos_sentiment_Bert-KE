@@ -1,11 +1,6 @@
 # 实现通过Dataloader读取数据的方法
 from torch.utils.data import Dataset
-from transformers import BertModel, BertTokenizer
 import torch
-
-bert_model = BertModel.from_pretrained('bert-base-uncased',
-                                       device_map='cuda:0')
-tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 
 labels2idx = {'O': 0, 'B': 1, 'I': 2, 'E': 3, 'S': 4}
 
@@ -21,7 +16,7 @@ class KE_Dataloader(Dataset):
         return self.tweets[index], self.tags[index]
 
 
-def batch_padding_tokenizing_collate_function(batch):
+def batch_padding_tokenizing_collate_function(batch, tokenizer):
     tweets, tags = zip(*batch)
     tweets = list(tweets)
     tags = list(tags)
@@ -50,7 +45,9 @@ def batch_padding_tokenizing_collate_function(batch):
     inputs["input_ids"] = encoded_tweet["input_ids"]
     inputs["attention_mask"] = encoded_tweet["attention_mask"]
     inputs["label_y"] = torch.tensor(y, dtype=torch.int64)
+    inputs["mask_y"] = torch.tensor(y, dtype=torch.int64)!=0
     inputs["label_z"] = torch.tensor(z, dtype=torch.int64)
+    inputs["mask_z"] = torch.tensor(z, dtype=torch.int64)!=0
     return inputs
 
 def get_label(encoded_tweet, encoded_tag):

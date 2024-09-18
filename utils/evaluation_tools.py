@@ -23,20 +23,9 @@ def keyphrase_acc_cal(total_z, total_z_pred, type, logger):
 
 def metrics_cal(total_z, total_z_pred, type, logger):
     # Score Calculation
-    flattened_preds = [item for sentence in total_z for item in sentence]
-    flattened_labels = [item for sentence in total_z_pred for item in sentence]
-    recall = recall_score(flattened_labels, flattened_preds, average='micro')
-    precision = precision_score(flattened_labels, flattened_preds, average='micro')
-    f1 = f1_score(flattened_labels, flattened_preds, average='micro')
+    flattened_preds = [item for sentence in total_z_pred for item in sentence]
+    flattened_labels = [item for sentence in total_z for item in sentence]
     cm = confusion_matrix(flattened_labels, flattened_preds)
-    if type == 'y task':
-        labels = [0, 1]
-    else:
-        labels = [0,1,2,3,4]
-    recall_n = recall_score(flattened_labels, flattened_preds, average=None, labels=labels)
-    precision_n = precision_score(flattened_labels, flattened_preds, average=None, labels=labels)
-    f1_n = f1_score(flattened_labels, flattened_preds, average=None, labels=labels)
-
     # draw confusion matrix
     plt.figure(figsize=(8, 6))
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
@@ -44,17 +33,56 @@ def metrics_cal(total_z, total_z_pred, type, logger):
     plt.xlabel('Predicted')
     plt.ylabel('Actual')
     plt.savefig('plot/Confusion Matrix Heatmap for '+ type + '.png')
-    plt.show()
-    
-    logger.info("------------------------------------------------")
-    logger.info("AVERAGE = MICRO: ")
-    logger.info(f'Recall for {type}: {recall:.8f}')
-    logger.info(f'Precision for {type}: {precision:.8f}')
-    logger.info(f'F1 Score for {type}: {f1:.8f}')
-    logger.info(f'Plotting Confusion Matrix Heatmap for {type} has finished!')
-    logger.info("AVERAGE = NONE: ")
-    logger.info(f'Recall for {type}: {recall_n}')
-    logger.info(f'Precision for {type}: {precision_n}')
-    logger.info(f'F1 Score for {type}: {f1_n}')
-    logger.info(f'Plotting Confusion Matrix Heatmap for {type} has finished!')
-    logger.info("------------------------------------------------")
+    # plt.show()
+    if type == 'y task':
+        labels = [0, 1]
+        average = "binary"
+        recall = recall_score(flattened_labels, flattened_preds, average=average, labels=labels)
+        precision = precision_score(flattened_labels, flattened_preds, average=average, labels=labels)
+        f1 = f1_score(flattened_labels, flattened_preds, average=average, labels=labels)
+        # recall_n = recall_score(flattened_labels, flattened_preds, average=None, labels=labels)
+        # precision_n = precision_score(flattened_labels, flattened_preds, average=None, labels=labels)
+        # f1_n = f1_score(flattened_labels, flattened_preds, average=None, labels=labels)
+        logger.info("----------------FOR Y TASK--------------------------------")
+        logger.info(f'Recall for {type}: {recall:.3f}')
+        logger.info(f"AVERAGE = {average}: ")
+        logger.info(f'Precision for {type}: {precision:.3f}')
+        logger.info(f'F1 Score for {type}: {f1:.3f}')
+        logger.info("AVERAGE = NONE: ")
+        # logger.info(f'Recall for {type}: {recall_n}')
+        # logger.info(f'Precision for {type}: {precision_n}')
+        # logger.info(f'F1 Score for {type}: {f1_n}')
+        logger.info(f'Plotting Confusion Matrix Heatmap for {type} has finished!')
+        logger.info("---------------------------------------------------------")
+        logger.info("\n\n")
+    else:
+        labels = [0,1,2,3,4]
+        # average = "weighted"
+        # recall_w = recall_score(flattened_labels, flattened_preds, average=average, labels=labels)
+        # precision_w = precision_score(flattened_labels, flattened_preds, average=average, labels=labels)
+        # f1_w = f1_score(flattened_labels, flattened_preds, average=average, labels=labels)
+
+        recall_n = recall_score(flattened_labels, flattened_preds, average=None, labels=labels)
+        precision_n = precision_score(flattened_labels, flattened_preds, average=None, labels=labels)
+        f1_n = f1_score(flattened_labels, flattened_preds, average=None, labels=labels)
+
+        recall_ma = recall_score(flattened_labels, flattened_preds, average='macro', labels=labels)
+        precision_ma = precision_score(flattened_labels, flattened_preds, average='macro', labels=labels)
+        f1_ma = f1_score(flattened_labels, flattened_preds, average='macro', labels=labels)
+        logger.info("----------------FOR Z TASK--------------------------------")
+        logger.info("AVERAGE = weighted: ")
+        # logger.info(f'Recall for {type}: {recall_w:.8f}')
+        # logger.info(f'Precision for {type}: {precision_w:.8f}')
+        # logger.info(f'F1 Score for {type}: {f1_w:.8f}')
+        logger.info("AVERAGE = macro: ")
+        logger.info(f'Precision for {type}: {precision_ma:.3f}')
+        logger.info(f'Recall for {type}: {recall_ma:.3f}')   
+        logger.info(f'F1 Score for {type}: {f1_ma:.3f}')
+        logger.info("AVERAGE = NONE: ")
+        logger.info(f'Precision for {type}: {precision_n}')
+        logger.info(f'Recall for {type}: {recall_n}')
+        logger.info(f'F1 Score for {type}: {f1_n}')
+        logger.info(f'Plotting Confusion Matrix Heatmap for {type} has finished!')
+        logger.info("---------------------------------------------------------")
+        logger.info("\n\n")
+
