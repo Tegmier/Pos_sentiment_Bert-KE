@@ -45,7 +45,7 @@ embedding_dim = bert_model.config.hidden_size
 y_dim = 2
 z_dim = 5
 batchsize = 64
-nepochs = 30
+nepochs = 28
 labels2idx = {'O': 0, 'B': 1, 'I': 2, 'E': 3, 'S': 4}
 lr = 0.0001
 lr_after = 0.000001
@@ -55,10 +55,10 @@ numberofdata = 40000
 world_size = 4  # 使用的 GPU 数量
 train_test_rate = 0.7
 decay_rate = 0.8
-model_name = "FinetuneBertMFANbilstmtwooutput"
+model_name = "FinetuneBertMFANbilstm"
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 #############################################################################
-selected_model = FinetuneBertMFANbilstmtwooutput
+selected_model = FinetuneBertMFANbilstm
 
 # 训练函数
 def train(rank, world_size, data, logger):

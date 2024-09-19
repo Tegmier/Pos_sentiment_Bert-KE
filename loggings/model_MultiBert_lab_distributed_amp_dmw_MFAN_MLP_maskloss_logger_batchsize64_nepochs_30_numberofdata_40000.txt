@@ -1,0 +1,12 @@
+2024-09-18 19:42:43,228 - INFO - Experiment Config:
+2024-09-18 19:42:43,228 - INFO - model_name: MultiBert_lab_distributed_amp_dmw_MFAN_MLP_maskloss_logger
+2024-09-18 19:42:43,229 - INFO - embedding_dim: 768
+2024-09-18 19:42:43,229 - INFO - batchsize: 64
+2024-09-18 19:42:43,229 - INFO - nepochs: 30
+2024-09-18 19:42:43,229 - INFO - lr: 0.0001
+2024-09-18 19:42:43,229 - INFO - lr_after: 1e-06
+2024-09-18 19:42:43,229 - INFO - step_epoch: 25
+2024-09-18 19:42:43,229 - INFO - max_grad_norm: 5
+2024-09-18 19:42:43,229 - INFO - numberofdata: 40000
+2024-09-18 19:42:43,229 - INFO - world_size: 4
+2024-09-18 19:42:43,229 - INFO - train_test_rate: 0.7

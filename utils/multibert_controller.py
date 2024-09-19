@@ -1,5 +1,4 @@
 from transformers import BertModel, BertTokenizer
-from transformers import BertModel, BertTokenizer
 from transformers import RobertaModel, RobertaTokenizer
 from transformers import AlbertModel, AlbertTokenizer
 from transformers import DistilBertModel, DistilBertTokenizer
@@ -29,5 +28,5 @@ tinybert_model = AutoModel.from_pretrained('huawei-noah/TinyBERT_General_4L_312D
 tinybert_tokenizer = AutoTokenizer.from_pretrained('huawei-noah/TinyBERT_General_4L_312D')
 
 # 导入 BERTweet 模型
-bertweet_model = AutoModel.from_pretrained('vinai/bertweet-base')
-bertweet_tokenizer = AutoTokenizer.from_pretrained('vinai/bertweet-base')
+bertweet_model = AutoModel.from_pretrained('Twitter/twhin-bert-base')
+bertweet_tokenizer = AutoTokenizer.from_pretrained('Twitter/twhin-bert-base')

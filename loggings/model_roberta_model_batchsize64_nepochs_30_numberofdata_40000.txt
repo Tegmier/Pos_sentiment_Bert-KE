@@ -1,0 +1,12 @@
+2024-09-18 22:04:18,020 - INFO - Experiment Config:
+2024-09-18 22:04:18,020 - INFO - model_name: roberta_model
+2024-09-18 22:04:18,020 - INFO - embedding_dim: 768
+2024-09-18 22:04:18,020 - INFO - batchsize: 64
+2024-09-18 22:04:18,020 - INFO - nepochs: 30
+2024-09-18 22:04:18,020 - INFO - lr: 0.0001
+2024-09-18 22:04:18,021 - INFO - lr_after: 1e-06
+2024-09-18 22:04:18,021 - INFO - step_epoch: 25
+2024-09-18 22:04:18,021 - INFO - max_grad_norm: 5
+2024-09-18 22:04:18,021 - INFO - numberofdata: 40000
+2024-09-18 22:04:18,021 - INFO - world_size: 4
+2024-09-18 22:04:18,021 - INFO - train_test_rate: 0.7

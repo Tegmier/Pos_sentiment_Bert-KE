@@ -1,0 +1,43 @@
+2024-09-18 18:08:24,559 - INFO - Experiment Config:
+2024-09-18 18:08:24,559 - INFO - model_name: FinetuneBertMFANbirnn
+2024-09-18 18:08:24,559 - INFO - embedding_dim: 768
+2024-09-18 18:08:24,559 - INFO - batchsize: 64
+2024-09-18 18:08:24,559 - INFO - nepochs: 30
+2024-09-18 18:08:24,559 - INFO - lr: 0.0001
+2024-09-18 18:08:24,559 - INFO - lr_after: 1e-06
+2024-09-18 18:08:24,559 - INFO - step_epoch: 60
+2024-09-18 18:08:24,559 - INFO - max_grad_norm: 5
+2024-09-18 18:08:24,559 - INFO - numberofdata: 40000
+2024-09-18 18:08:24,559 - INFO - world_size: 4
+2024-09-18 18:08:24,559 - INFO - train_test_rate: 0.7
+2024-09-18 18:18:08,806 - INFO - Test Loss: 0.1108, Accuracy Y: 0.96804713, Accuracy Z: 0.97382555
+2024-09-18 18:18:10,491 - INFO - ----------------FOR Y TASK--------------------------------
+2024-09-18 18:18:10,491 - INFO - Recall for y task: 0.908
+2024-09-18 18:18:10,491 - INFO - AVERAGE = binary: 
+2024-09-18 18:18:10,491 - INFO - Precision for y task: 0.605
+2024-09-18 18:18:10,491 - INFO - F1 Score for y task: 0.726
+2024-09-18 18:18:10,491 - INFO - AVERAGE = NONE: 
+2024-09-18 18:18:10,491 - INFO - Plotting Confusion Matrix Heatmap for y task has finished!
+2024-09-18 18:18:10,491 - INFO - ---------------------------------------------------------
+2024-09-18 18:18:10,491 - INFO - 
+
+
+2024-09-18 18:18:13,306 - INFO - ----------------FOR Z TASK--------------------------------
+2024-09-18 18:18:13,307 - INFO - AVERAGE = weighted: 
+2024-09-18 18:18:13,307 - INFO - AVERAGE = macro: 
+2024-09-18 18:18:13,307 - INFO - Precision for z task: 0.721
+2024-09-18 18:18:13,307 - INFO - Recall for z task: 0.884
+2024-09-18 18:18:13,307 - INFO - F1 Score for z task: 0.779
+2024-09-18 18:18:13,307 - INFO - AVERAGE = NONE: 
+2024-09-18 18:18:13,307 - INFO - Precision for z task: [0.9951569  0.67978386 0.3617483  0.74149308 0.8247871 ]
+2024-09-18 18:18:13,307 - INFO - Recall for z task: [0.97899796 0.88962337 0.8407781  0.8810146  0.82838944]
+2024-09-18 18:18:13,308 - INFO - F1 Score for z task: [0.9870113  0.77067519 0.50585176 0.80525502 0.82658435]
+2024-09-18 18:18:13,308 - INFO - Plotting Confusion Matrix Heatmap for z task has finished!
+2024-09-18 18:18:13,308 - INFO - ---------------------------------------------------------
+2024-09-18 18:18:13,308 - INFO - 
+
+
+2024-09-18 18:18:13,407 - INFO - Keyphrase accuracy calculation for y task is 0.88775
+2024-09-18 18:18:13,496 - INFO - Keyphrase accuracy calculation for z task is 0.8465
+2024-09-18 18:18:13,496 - INFO - Sentence based acc for y task:0.83558333
+2024-09-18 18:18:13,497 - INFO - Sentence based acc for z task:0.83575000

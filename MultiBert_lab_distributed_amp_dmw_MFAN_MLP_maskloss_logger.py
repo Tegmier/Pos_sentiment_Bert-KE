@@ -21,8 +21,12 @@ from utils.loss_manipulation_and_visualization_utils import main_visualization
 from utils.pickle_opt import pickle_read, pickle_write
 from utils.loggings import get_logger, write_log
 from utils.dmw_cal import dmw_weight_cal_norm, dmw_weight_cal_exp, regular_weight_cal
-from utils.multibert_controller import bert_model, bert_tokenizer, roberta_model, roberta_tokenizer, albert_model, albert_tokenizer, distilbert_model, distilbert_tokenizer, tinybert_model, tinybert_tokenizer, bertweet_model, bertweet_tokenizer
 from functools import partial
+# Load model directly
+from transformers import AutoTokenizer, AutoModelForMaskedLM
+
+tokenizer = AutoTokenizer.from_pretrained("Twitter/twhin-bert-base")
+model = AutoModelForMaskedLM.from_pretrained("Twitter/twhin-bert-base")
 
 # 禁用特定类型的警告，例如 FutureWarning
 import warnings
@@ -33,14 +37,14 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 y_dim = 2
 z_dim = 5
 batchsize = 64
-nepochs = 40
+nepochs = 30
 labels2idx = {'O': 0, 'B': 1, 'I': 2, 'E': 3, 'S': 4}
 lr = 0.0001
 lr_after = 0.000001
 step_epoch = 25
 max_grad_norm = 5
-numberofdata = 60000
-world_size = 4  # 使用的 GPU 数量
+numberofdata = 40000
+world_size = 4  
 train_test_rate = 0.7
 decay_rate = 0.8
 model_name = "MultiBert_lab_distributed_amp_dmw_MFAN_MLP_maskloss_logger"
@@ -48,23 +52,47 @@ model_name = "MultiBert_lab_distributed_amp_dmw_MFAN_MLP_maskloss_logger"
 
 #############################################################################
 # Bert Model list
-model1, tokenizer1 = bert_model, bert_tokenizer
-model2, tokenizer2 = roberta_model, roberta_tokenizer
-model3, tokenizer3 = albert_model, albert_tokenizer
-model4, tokenizer4 = distilbert_model, distilbert_tokenizer
-model5, tokenizer5 = tinybert_model, tinybert_tokenizer
-model6, tokenizer6 = bertweet_model, bertweet_tokenizer
+# model1, tokenizer1 = bert_model, bert_tokenizer
+# model2, tokenizer2 = roberta_model, roberta_tokenizer
+# model3, tokenizer3 = albert_model, albert_tokenizer
+# model4, tokenizer4 = distilbert_model, distilbert_tokenizer
+# model5, tokenizer5 = tinybert_model, tinybert_tokenizer
+# model6, tokenizer6 = bertweet_model, bertweet_tokenizer
 
-model_name1 = "bert_model"
-model_name2 = "roberta_model"
-model_name3 = "albert_model"
-model_name4 = "distilbert_model"
-model_name5 = "tinybert_model"
-model_name6 = "bertweet_model"
+# model_name1 = "bert_model"
+# model_name2 = "roberta_model"
+# model_name3 = "albert_model"
+# model_name4 = "distilbert_model"
+# model_name6 = "bertweet_model"
 
-selected_model = model2
-selected_tokenizer = tokenizer2
-selected_model_name = model_name2
+model_name = "albert_model"
+
+if model_name == "bert_model":
+    from transformers import BertModel, BertTokenizer
+    selected_model = BertModel.from_pretrained('bert-base-uncased')
+    selected_tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+    selected_model_name = "bert_model"
+if model_name == "roberta_model":
+    from transformers import RobertaModel, RobertaTokenizer
+    selected_model = RobertaModel.from_pretrained('roberta-base')
+    selected_tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
+    selected_model_name = "roberta_model"
+if model_name == "albert_model":
+    from transformers import AlbertModel, AlbertTokenizer
+    selected_model = AlbertModel.from_pretrained('albert-base-v2')
+    selected_tokenizer = AlbertTokenizer.from_pretrained('albert-base-v2')
+    selected_model_name = "albert_model"
+if model_name == "distilbert_model":
+    from transformers import DistilBertModel, DistilBertTokenizer
+    selected_model = DistilBertModel.from_pretrained('distilbert-base-uncased')
+    selected_tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
+    selected_model_name = "distilbert_model"
+if model_name == "bertweet_model":
+    from transformers import AutoModel, AutoTokenizer
+    selected_model = AutoModel.from_pretrained('Twitter/twhin-bert-base')
+    selected_tokenizer = AutoTokenizer.from_pretrained('Twitter/twhin-bert-base')
+    selected_model_name = "bertweet_model"
+
 embedding_dim = selected_model.config.hidden_size
 #############################################################################
 
@@ -85,7 +113,7 @@ def train(rank, world_size, data, logger):
 
     # 初始化模型
     model = MultiBERT(bert_model=selected_model, y_dim=y_dim, z_dim=z_dim, embedding_dim=embedding_dim).cuda(rank)
-    model = DDP(model, device_ids=[rank], find_unused_parameters=True)  # 包装模型
+    model = DDP(model, device_ids=[rank], find_unused_parameters=True)  
 
     # 初始化损失函数和优化器
     criterion = nn.CrossEntropyLoss(reduction='none').cuda(rank)
@@ -105,6 +133,7 @@ def train(rank, world_size, data, logger):
             with autocast(device_type='cuda'):
                 y = inputs["label_y"].cuda(rank)
                 z = inputs["label_z"].cuda(rank)
+                print(y)
                 # attention_mask batch*seq
                 attention_mask = inputs["attention_mask"].cuda(rank)
                 optimizer.zero_grad()
@@ -209,10 +238,10 @@ def eval(data, logger):
     keyphrase_acc_cal(keyphrase_acc_z, keyphrase_acc_z_pred, type = "z task", logger=logger)
     sentence_based_acc_y = np.array(sentence_based_acc_y)
     sentence_acc_y = np.sum(sentence_based_acc_y[:,0])/np.sum(sentence_based_acc_y[:,1])
-    logger.info('Sentence based acc for y task:{:.8f}'.format(sentence_acc_y))
+    logger.info('Sentence based acc for y task:{:.3f}'.format(sentence_acc_y))
     sentence_based_acc_z = np.array(sentence_based_acc_z)
     sentence_acc_z = np.sum(sentence_based_acc_z[:,0])/np.sum(sentence_based_acc_z[:,1])
-    logger.info('Sentence based acc for z task:{:.8f}'.format(sentence_acc_z))
+    logger.info('Sentence based acc for z task:{:.3f}'.format(sentence_acc_z))
 
 # 主函数
 if __name__ == "__main__":

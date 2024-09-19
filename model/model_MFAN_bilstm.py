@@ -27,8 +27,8 @@ class FinetuneBertMFANbilstm(nn.Module):
         self.bert = bert_model
         self.lstm_num_layer = 2
         self.lstem_dropout = 0.1
-        self.mlpblock1 = MLPFANBlock(self.embedding_dim)
-        self.mlpblock2 = MLPFANBlock(self.embedding_dim)
+        # self.mlpblock1 = MLPFANBlock(self.embedding_dim)
+        # self.mlpblock2 = MLPFANBlock(self.embedding_dim)
         self.classifier_y = nn.Linear(embedding_dim, y_dim)
         self.classifier_z = nn.Linear(embedding_dim, z_dim)
         self.bilstm1 = nn.LSTM(
@@ -59,11 +59,11 @@ class FinetuneBertMFANbilstm(nn.Module):
 
         out1, _ = self.bilstm1(embeddings)
         out1 = self.fc1(out1)
-        out1 = self.mlpblock1(out1)
+        # out1 = self.mlpblock1(out1)
 
         out2, _ = self.bilstm2(out1)
         out2 = self.fc2(out2)
-        out2 = self.mlpblock2(out2)
+        # out2 = self.mlpblock2(out2)
 
         out1 = self.classifier_y(out1)
         out2 = self.classifier_z(out2)
