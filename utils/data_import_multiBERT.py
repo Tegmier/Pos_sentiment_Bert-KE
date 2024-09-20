@@ -137,7 +137,7 @@ def get_label(tokenized_tweet_list, tokenized_tag_list):
     return y, z
 
 def multi_bert_data_process(tokenizer, model_name):
-    data_preparation_flag = False
+    data_preparation_flag = True
     print("--------------------------------------------------------------------")
     print("Start Data Process:")
     
